@@ -1,6 +1,9 @@
 /**
  * NSE (National Stock Exchange) API integration
- * Provides functions to fetch stock data from NSE
+ * Provides functions to fetch stock data from NSE India
+ * 
+ * IMPORTANT: Uses NSE India public endpoints only
+ * No Yahoo Finance or US-centric providers
  */
 
 import { StockPrice } from '@/types';
@@ -9,13 +12,16 @@ import cache from '@/lib/cache';
 const NSE_BASE_URL = 'https://www.nseindia.com';
 
 /**
- * Default headers for NSE requests
+ * Required headers for NSE requests
+ * NSE requires proper browser-like headers to prevent blocking
  */
 const getHeaders = () => ({
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-  'Accept': 'application/json',
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Accept': 'application/json, text/plain, */*',
   'Accept-Language': 'en-US,en;q=0.9',
   'Accept-Encoding': 'gzip, deflate, br',
+  'Referer': 'https://www.nseindia.com/',
+  'X-Requested-With': 'XMLHttpRequest',
 });
 
 /**
@@ -32,13 +38,14 @@ export async function fetchNSEQuote(symbol: string): Promise<StockPrice | null> 
   }
 
   try {
-    // NOTE: This is a PLACEHOLDER implementation for development
-    // NSE does not provide a public API for quote data
-    // In production, consider using:
-    // 1. Yahoo Finance API (free tier available)
-    // 2. Alpha Vantage (free tier: 5 calls/min, 500 calls/day)
-    // 3. Web scraping NSE website (ensure compliance with ToS)
-    // 4. Commercial data providers (Zerodha, Upstox, etc.)
+    // NOTE: NSE India public API endpoint
+    // This is an official NSE endpoint that requires proper headers
+    // Rate limit: ~2-3 requests/second
+    // 
+    // Alternative approach if this fails:
+    // 1. Alpha Vantage with .NS suffix (RELIANCE.NS)
+    // 2. Screener.in API (unofficial but reliable for Indian stocks)
+    // 3. Implement circuit breaker and retry logic
     const response = await fetch(`${NSE_BASE_URL}/api/quote-equity?symbol=${symbol}`, {
       headers: getHeaders(),
     });

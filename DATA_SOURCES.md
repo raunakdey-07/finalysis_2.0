@@ -2,84 +2,105 @@
 
 This document outlines free data sources and APIs that can be used with Finalysis 3.0 for Indian equity analysis.
 
+**IMPORTANT**: This project focuses exclusively on Indian equities. No US-centric data providers.
+
 ## Stock Price Data
 
-### 1. Yahoo Finance API (Unofficial)
+### 1. NSE India Public Endpoints (PRIMARY)
 - **Cost**: Free
-- **Limitations**: Unofficial, may change without notice
-- **Usage**: Stock quotes, historical data
-- **Example**: `https://query1.finance.yahoo.com/v8/finance/chart/RELIANCE.NS`
+- **Limitations**: Rate limiting, requires proper headers
+- **Usage**: Real-time quotes, historical data, market status
+- **Example Endpoints**:
+  - Market status: `https://www.nseindia.com/api/marketStatus`
+  - Quote: `https://www.nseindia.com/api/quote-equity?symbol=RELIANCE`
+  - Market data: `https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%2050`
+- **Headers Required**:
+  ```
+  User-Agent: Mozilla/5.0...
+  Accept: application/json
+  Accept-Language: en-US,en;q=0.9
+  ```
+- **Rate Limit**: ~2-3 requests/second (be respectful)
 
-### 2. NSE Website (Web Scraping)
+### 2. BSE India Public Data
 - **Cost**: Free
-- **Limitations**: Must comply with ToS, rate limiting
-- **Usage**: Real-time quotes, corporate actions
-- **Note**: Requires proper user-agent headers and respectful rate limiting
+- **Limitations**: Limited API access, mostly CSV downloads
+- **Usage**: EOD data, corporate actions
+- **Website**: https://www.bseindia.com
 
-### 3. Alpha Vantage (Free Tier)
+### 3. Alpha Vantage (SECONDARY - For Indian Stocks)
 - **Cost**: Free with limits (5 API calls/min, 500 calls/day)
 - **Limitations**: Rate limits, requires API key
-- **Usage**: Stock quotes, historical data, technical indicators
+- **Usage**: Supports NSE/BSE stocks with .NS/.BO suffix
 - **Signup**: https://www.alphavantage.co/support/#api-key
+- **Example**: `RELIANCE.NS` for NSE, `RELIANCE.BO` for BSE
 
-### 4. Financial Modeling Prep (Free Tier)
-- **Cost**: Free with limits (250 requests/day)
-- **Limitations**: Rate limits, requires API key
-- **Usage**: Financial statements, stock quotes
-- **Signup**: https://financialmodelingprep.com/developer/docs/
+### ⚠️ NOT RECOMMENDED
+- **Yahoo Finance**: Unreliable for Indian stocks, unofficial API
+- **US-only providers**: Not suitable for NSE/BSE data
 
 ## Fundamental Data
 
-### 1. Screener.in (Unofficial API)
+### 1. Screener.in (PRIMARY for Fundamentals)
 - **Cost**: Free
-- **Limitations**: Unofficial, no API documentation
-- **Usage**: P/E ratio, P/B ratio, dividend yield, EPS
-- **Note**: Data can be scraped from their website
+- **Limitations**: Unofficial API, no documentation
+- **Usage**: P/E, P/B, dividend yield, EPS, ROE, ROCE, debt ratios
+- **Strategy**: Parse HTML/JSON responses
+- **Example**: `https://www.screener.in/api/company/{company_id}/`
+- **Cache TTL**: 60-90 days (fundamentals change quarterly)
 
-### 2. MoneyControl
+### 2. MoneyControl (SECONDARY)
 - **Cost**: Free
 - **Limitations**: Web scraping required
-- **Usage**: Company fundamentals, financial statements
-- **Note**: Comprehensive data, requires scraping
+- **Usage**: Comprehensive fundamental data, financial statements
+- **Strategy**: Parse HTML, respect rate limits
+- **Cache TTL**: 60-90 days
 
-### 3. BSE India
+### 3. NSE Corporate Information
 - **Cost**: Free
-- **Limitations**: Limited API access, mostly manual
+- **Usage**: Company info, corporate actions, announcements
+- **Website**: https://www.nseindia.com/companies-listing/corporate-actions
+
+### 4. BSE Corporate Data
+- **Cost**: Free
 - **Usage**: Corporate announcements, financial results
 - **Website**: https://www.bseindia.com
 
 ### 4. NSE India
 - **Cost**: Free
-- **Limitations**: Limited API access
+- **Limitations**: Limited direct API access
 - **Usage**: Company information, corporate actions
 - **Website**: https://www.nseindia.com
 
 ## News Sources (RSS Feeds)
 
-### 1. Economic Times - Markets
+### 1. Google News RSS (PRIMARY)
+- **RSS Feed**: `https://news.google.com/rss/search?q={stock_name}+stock+india&hl=en-IN&gl=IN&ceid=IN:en`
+- **Cost**: Free
+- **Content**: Real-time news aggregation
+- **Cache TTL**: 6-12 hours
+
+### 2. Economic Times - Markets
 - **RSS Feed**: `https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms`
 - **Cost**: Free
 - **Content**: Market news, stock analysis
+- **Cache TTL**: 6-12 hours
 
-### 2. MoneyControl
+### 3. MoneyControl
 - **RSS Feed**: `https://www.moneycontrol.com/rss/marketreports.xml`
 - **Cost**: Free
 - **Content**: Market reports, stock news
 
-### 3. LiveMint - Markets
+### 4. LiveMint - Markets
 - **RSS Feed**: `https://www.livemint.com/rss/markets`
 - **Cost**: Free
 - **Content**: Financial news, market updates
 
-### 4. Business Standard
-- **RSS Feed**: `https://www.business-standard.com/rss/markets-106.rss`
-- **Cost**: Free
-- **Content**: Business news, market analysis
-
-### 5. Financial Express
-- **RSS Feed**: `https://www.financialexpress.com/market/market-news/feed/`
-- **Cost**: Free
-- **Content**: Market news and updates
+### 5. GNews API (FALLBACK)
+- **Cost**: Free tier (100 requests/day)
+- **Signup**: https://gnews.io/
+- **Usage**: Backup when RSS feeds fail
+- **Cache TTL**: 12 hours
 
 ## Historical Data
 
