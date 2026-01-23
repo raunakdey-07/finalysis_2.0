@@ -19,28 +19,28 @@ export default function Home() {
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
           <FeatureCard
             title="NSE Integration"
-            description="Real-time price data from National Stock Exchange"
+            description="Live price quotes from National Stock Exchange for all listed Indian stocks"
             Icon={TrendingUp}
           />
           <FeatureCard
             title="Cached Fundamentals"
-            description="Efficient caching layer for fundamental stock data"
+            description="Financial ratios and metrics cached for fast analysis without repeated API calls"
             Icon={Database}
           />
           <FeatureCard
             title="News Sentiment"
-            description="RSS-based sentiment analysis from financial news"
+            description="Automated sentiment scoring from Economic Times, MoneyControl, and LiveMint RSS feeds"
             Icon={Newspaper}
           />
           <FeatureCard
             title="Explainable Metrics"
-            description="Transparent metrics with clear explanations"
+            description="Each metric includes clear definition, interpretation guide, and common pitfalls"
             Icon={Target}
           />
         </div>
 
         {/* API Endpoints */}
-        <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl p-8 mb-16">
+        <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl p-8">
           <h2 className="text-3xl font-bold mb-6 text-slate-800 dark:text-white">
             API Endpoints
           </h2>
@@ -48,41 +48,28 @@ export default function Home() {
             <ApiEndpoint
               method="GET"
               path="/api/nse/quote?symbol=RELIANCE"
-              description="Get stock quote from NSE"
+              description="Get current stock price, volume, and trading data"
             />
             <ApiEndpoint
               method="GET"
               path="/api/nse/search?q=tata"
-              description="Search for stocks by keyword"
+              description="Search for company tickers by name or keyword"
             />
             <ApiEndpoint
               method="GET"
               path="/api/news?symbol=TCS"
-              description="Get news with sentiment analysis"
+              description="Get latest news articles with sentiment scores"
             />
             <ApiEndpoint
               method="GET"
               path="/api/news?type=sentiment"
-              description="Get overall market sentiment"
+              description="Get aggregated market sentiment indicator"
             />
             <ApiEndpoint
               method="GET"
               path="/api/metrics?symbol=INFY"
-              description="Get explainable metrics for a stock"
+              description="Get Piotroski F-Score, Altman Z, and valuation metrics"
             />
-          </div>
-        </div>
-
-        {/* Tech Stack */}
-        <div className="text-center">
-          <h3 className="text-2xl font-bold mb-6 text-slate-800 dark:text-white">
-            Built With
-          </h3>
-          <div className="flex flex-wrap justify-center gap-4">
-            <TechBadge name="Next.js 16.1" />
-            <TechBadge name="TypeScript 5" />
-            <TechBadge name="Tailwind CSS 4" />
-            <TechBadge name="Node.js 20" />
           </div>
         </div>
       </div>
@@ -101,11 +88,13 @@ function FeatureCard({
 }) {
   return (
     <div className="bg-white dark:bg-slate-800 rounded-lg p-6 shadow-lg hover:shadow-xl transition-shadow">
-      <Icon className="w-10 h-10 mb-4 text-blue-600 dark:text-blue-400" />
-      <h3 className="text-xl font-semibold mb-2 text-slate-800 dark:text-white">
-        {title}
-      </h3>
-      <p className="text-slate-600 dark:text-slate-300">{description}</p>
+      <div className="flex items-center gap-3 mb-3">
+        <Icon className="w-8 h-8 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+        <h3 className="text-xl font-semibold text-slate-800 dark:text-white">
+          {title}
+        </h3>
+      </div>
+      <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">{description}</p>
     </div>
   );
 }
@@ -120,26 +109,18 @@ function ApiEndpoint({
   description: string;
 }) {
   return (
-    <div className="flex items-start gap-4 p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
-      <span className="px-3 py-1 bg-green-500 text-white text-sm font-semibold rounded">
+    <div className="flex items-start gap-4 p-4 bg-slate-50 dark:bg-slate-700 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors">
+      <span className="px-3 py-1 bg-green-500 text-white text-xs font-bold rounded uppercase">
         {method}
       </span>
-      <div className="flex-1">
-        <code className="text-sm text-slate-800 dark:text-slate-200 font-mono">
+      <div className="flex-1 min-w-0">
+        <code className="text-sm text-slate-800 dark:text-slate-200 font-mono block break-all">
           {path}
         </code>
-        <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+        <p className="text-sm text-slate-600 dark:text-slate-400 mt-2">
           {description}
         </p>
       </div>
     </div>
-  );
-}
-
-function TechBadge({ name }: { name: string }) {
-  return (
-    <span className="px-4 py-2 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-100 rounded-full text-sm font-semibold">
-      {name}
-    </span>
   );
 }
