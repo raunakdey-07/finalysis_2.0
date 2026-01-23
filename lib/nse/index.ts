@@ -32,9 +32,13 @@ export async function fetchNSEQuote(symbol: string): Promise<StockPrice | null> 
   }
 
   try {
-    // Note: This is a placeholder implementation
-    // In production, you would use actual NSE API endpoints
-    // Free alternatives: Yahoo Finance, Alpha Vantage free tier, or web scraping
+    // NOTE: This is a PLACEHOLDER implementation for development
+    // NSE does not provide a public API for quote data
+    // In production, consider using:
+    // 1. Yahoo Finance API (free tier available)
+    // 2. Alpha Vantage (free tier: 5 calls/min, 500 calls/day)
+    // 3. Web scraping NSE website (ensure compliance with ToS)
+    // 4. Commercial data providers (Zerodha, Upstox, etc.)
     const response = await fetch(`${NSE_BASE_URL}/api/quote-equity?symbol=${symbol}`, {
       headers: getHeaders(),
     });
@@ -94,7 +98,11 @@ export async function searchStocks(query: string): Promise<string[]> {
   }
 
   try {
-    // Placeholder - in production, implement actual search
+    // NOTE: This is a PLACEHOLDER implementation for development
+    // Replace with actual NSE search API or use alternatives:
+    // 1. Yahoo Finance search
+    // 2. Scrape NSE symbol list (update periodically)
+    // 3. Maintain local database of NSE symbols
     const response = await fetch(`${NSE_BASE_URL}/api/search/autocomplete?q=${query}`, {
       headers: getHeaders(),
     });

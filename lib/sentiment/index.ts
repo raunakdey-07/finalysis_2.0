@@ -58,6 +58,12 @@ function calculateSentiment(text: string): { sentiment: 'positive' | 'negative' 
 
 /**
  * Parse RSS feed XML to extract news items
+ * NOTE: This is a basic regex-based parser for demonstration
+ * For production, use a proper XML parser library:
+ * - fast-xml-parser (recommended, lightweight)
+ * - xml2js (popular, feature-rich)
+ * - xmldom (standards-compliant)
+ * 
  * @param xml - RSS feed XML string
  * @returns Array of news items
  */
@@ -77,8 +83,21 @@ function parseRSSFeed(xml: string, source: string): NewsItem[] {
     const pubDateMatch = itemXml.match(/<pubDate>(.*?)<\/pubDate>/s);
 
     if (titleMatch && linkMatch) {
-      const title = titleMatch[1].replace(/<!\[CDATA\[(.*?)\]\]>/s, '$1').trim();
-      const description = descMatch ? descMatch[1].replace(/<!\[CDATA\[(.*?)\]\]>/s, '$1').replace(/<[^>]*>/g, '').trim() : '';
+      // Extract and sanitize content by removing all HTML tags completely
+      // Using multiple passes to handle nested/malicious tags
+      let title = titleMatch[1].replace(/<!\[CDATA\[(.*?)\]\]>/s, '$1');
+      // Remove all HTML tags in multiple passes to prevent bypass
+      while (/<[^>]*>/g.test(title)) {
+        title = title.replace(/<[^>]*>/g, '');
+      }
+      title = title.trim();
+      
+      let description = descMatch ? descMatch[1].replace(/<!\[CDATA\[(.*?)\]\]>/s, '$1') : '';
+      // Remove all HTML tags in multiple passes to prevent bypass
+      while (/<[^>]*>/g.test(description)) {
+        description = description.replace(/<[^>]*>/g, '');
+      }
+      description = description.trim();
       
       const { sentiment, score } = calculateSentiment(`${title} ${description}`);
 

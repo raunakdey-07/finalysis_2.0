@@ -8,8 +8,19 @@ import { calculateMetrics, getRecommendation } from '@/lib/metrics';
 import { fetchNSEQuote } from '@/lib/nse';
 import { ApiResponse, StockFundamentals, StockMetrics } from '@/types';
 
-// Mock fundamental data for demonstration
-// In production, this would be fetched from a database or API
+/**
+ * Get mock fundamental data for demonstration
+ * 
+ * NOTE: This returns MOCK DATA for development/demo purposes only
+ * In production, replace with actual data from:
+ * 1. Screener.in API (unofficial but widely used)
+ * 2. MoneyControl data (web scraping)
+ * 3. BSE/NSE annual reports (manual/automated extraction)
+ * 4. Commercial data providers
+ * 
+ * @param symbol - Stock symbol
+ * @returns Mock fundamental data
+ */
 const getMockFundamentals = (symbol: string): StockFundamentals => ({
   symbol,
   companyName: `${symbol} Limited`,

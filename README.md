@@ -61,7 +61,7 @@ npm start
 ## 📁 Project Structure
 
 ```
-finalysis_2.0/
+finalysis_2.0/              # Repository name (Finalysis 3.0 codebase)
 ├── app/                    # Next.js App Router
 │   ├── api/               # API routes
 │   │   ├── nse/          # NSE price data endpoints
