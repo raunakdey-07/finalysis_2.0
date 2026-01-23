@@ -1,3 +1,5 @@
+import { TrendingUp, Database, Newspaper, Target } from 'lucide-react';
+
 export default function Home() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
@@ -9,7 +11,7 @@ export default function Home() {
           </h1>
           <p className="text-xl text-slate-600 dark:text-slate-300 max-w-2xl mx-auto">
             Zero-budget stock analysis for Indian equities with NSE integration,
-            cached fundamentals, and AI-powered sentiment analysis
+            cached fundamentals, and RSS-based sentiment analysis
           </p>
         </header>
 
@@ -18,22 +20,22 @@ export default function Home() {
           <FeatureCard
             title="NSE Integration"
             description="Real-time price data from National Stock Exchange"
-            icon="📈"
+            Icon={TrendingUp}
           />
           <FeatureCard
             title="Cached Fundamentals"
             description="Efficient caching layer for fundamental stock data"
-            icon="💾"
+            Icon={Database}
           />
           <FeatureCard
             title="News Sentiment"
             description="RSS-based sentiment analysis from financial news"
-            icon="📰"
+            Icon={Newspaper}
           />
           <FeatureCard
             title="Explainable Metrics"
             description="Transparent metrics with clear explanations"
-            icon="🎯"
+            Icon={Target}
           />
         </div>
 
@@ -91,15 +93,15 @@ export default function Home() {
 function FeatureCard({
   title,
   description,
-  icon,
+  Icon,
 }: {
   title: string;
   description: string;
-  icon: string;
+  Icon: React.ComponentType<{ className?: string }>;
 }) {
   return (
     <div className="bg-white dark:bg-slate-800 rounded-lg p-6 shadow-lg hover:shadow-xl transition-shadow">
-      <div className="text-4xl mb-4">{icon}</div>
+      <Icon className="w-10 h-10 mb-4 text-blue-600 dark:text-blue-400" />
       <h3 className="text-xl font-semibold mb-2 text-slate-800 dark:text-white">
         {title}
       </h3>

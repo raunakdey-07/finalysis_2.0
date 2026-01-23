@@ -2,11 +2,11 @@
 
 A from-scratch, API-only, zero-budget stock analysis application for Indian equities built with Next.js, TypeScript, and Tailwind CSS.
 
-## 🎯 Overview
+## Overview
 
 Finalysis 3.0 is a production-grade stock analysis platform designed specifically for Indian equities (NSE). It provides comprehensive market analysis, cached fundamentals, RSS-based news sentiment, and explainable metrics - all without requiring paid APIs or datasets.
 
-## 🚀 Features
+## Features
 
 - **NSE Price Integration**: Real-time price data from National Stock Exchange
 - **Cached Fundamentals**: Efficient caching layer for fundamental stock data
@@ -16,20 +16,20 @@ Finalysis 3.0 is a production-grade stock analysis platform designed specificall
 - **API-First Architecture**: RESTful API design for scalability
 - **Zero-Budget**: No paid APIs or datasets required
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 - **Framework**: Next.js 16.1+ (App Router)
 - **Language**: TypeScript 5+
 - **Styling**: Tailwind CSS 4+
 - **Runtime**: Node.js 20+
-- **Package Manager**: npm
+- **Package Manager**: pnpm
 
-## 📋 Prerequisites
+## Prerequisites
 
 - Node.js 20.x or higher
-- npm 10.x or higher
+- pnpm 10.x or higher
 
-## 🏁 Getting Started
+## Getting Started
 
 ### Installation
 
@@ -41,12 +41,12 @@ cd finalysis_2.0
 
 2. Install dependencies:
 ```bash
-npm install
+pnpm install
 ```
 
 3. Run the development server:
 ```bash
-npm run dev
+pnpm run dev
 ```
 
 4. Open [http://localhost:3000](http://localhost:3000) in your browser
@@ -54,11 +54,11 @@ npm run dev
 ### Build for Production
 
 ```bash
-npm run build
-npm start
+pnpm run build
+pnpm start
 ```
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 finalysis_2.0/              # Repository name (Finalysis 3.0 codebase)
@@ -81,14 +81,14 @@ finalysis_2.0/              # Repository name (Finalysis 3.0 codebase)
 └── README.md
 ```
 
-## 🔧 Available Scripts
+## Available Scripts
 
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
-- `npm start` - Start production server
-- `npm run lint` - Run ESLint
+- `pnpm run dev` - Start development server
+- `pnpm run build` - Build for production
+- `pnpm start` - Start production server
+- `pnpm run lint` - Run ESLint
 
-## 🏗️ Architecture
+## Architecture
 
 ### API-Only Design
 All data processing and business logic is handled through API routes, ensuring:
@@ -106,7 +106,7 @@ All data processing and business logic is handled through API routes, ensuring:
 - **RSS Feeds**: Curated financial news sources
 - **Fundamentals**: Publicly available financial statements
 
-## 🌐 Deployment
+## Deployment
 
 This application can be deployed to:
 - **Vercel** (Recommended for Next.js)
@@ -121,15 +121,15 @@ Create a `.env.local` file for local development:
 NEXT_PUBLIC_API_URL=http://localhost:3000
 ```
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
-## 📄 License
+## License
 
 See [LICENSE](LICENSE) file for details.
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - Built with [Next.js](https://nextjs.org)
 - Styled with [Tailwind CSS](https://tailwindcss.com)

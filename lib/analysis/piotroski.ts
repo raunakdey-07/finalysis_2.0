@@ -75,33 +75,33 @@ export function calculatePiotroskiScore(input: PiotroskiInput): PiotroskiResult 
   // 1. Positive Net Income
   if (input.netIncome > 0) {
     profitabilityScore++;
-    profitabilityDetails.push('✓ Positive net income');
+    profitabilityDetails.push('[PASS] Positive net income');
   } else {
-    profitabilityDetails.push('✗ Negative net income');
+    profitabilityDetails.push('[FAIL] Negative net income');
   }
   
   // 2. Positive Operating Cash Flow
   if (input.operatingCashFlow > 0) {
     profitabilityScore++;
-    profitabilityDetails.push('✓ Positive operating cash flow');
+    profitabilityDetails.push('[PASS] Positive operating cash flow');
   } else {
-    profitabilityDetails.push('✗ Negative operating cash flow');
+    profitabilityDetails.push('[FAIL] Negative operating cash flow');
   }
   
   // 3. Increasing ROA
   if (input.returnOnAssets > input.returnOnAssetsPrev) {
     profitabilityScore++;
-    profitabilityDetails.push('✓ ROA improved year-over-year');
+    profitabilityDetails.push('[PASS] ROA improved year-over-year');
   } else {
-    profitabilityDetails.push('✗ ROA declined or flat');
+    profitabilityDetails.push('[FAIL] ROA declined or flat');
   }
   
   // 4. Quality of Earnings (OCF > Net Income)
   if (input.operatingCashFlow > input.netIncome) {
     profitabilityScore++;
-    profitabilityDetails.push('✓ Cash earnings exceed accrual earnings');
+    profitabilityDetails.push('[PASS] Cash earnings exceed accrual earnings');
   } else {
-    profitabilityDetails.push('✗ Accrual earnings exceed cash earnings');
+    profitabilityDetails.push('[FAIL] Accrual earnings exceed cash earnings');
   }
   
   // Leverage/Liquidity
@@ -111,25 +111,25 @@ export function calculatePiotroskiScore(input: PiotroskiInput): PiotroskiResult 
   // 5. Decreasing Long-term Debt
   if (input.longTermDebt < input.longTermDebtPrev) {
     leverageScore++;
-    leverageDetails.push('✓ Long-term debt decreased');
+    leverageDetails.push('[PASS] Long-term debt decreased');
   } else {
-    leverageDetails.push('✗ Long-term debt increased or flat');
+    leverageDetails.push('[FAIL] Long-term debt increased or flat');
   }
   
   // 6. Increasing Current Ratio
   if (input.currentRatio > input.currentRatioPrev) {
     leverageScore++;
-    leverageDetails.push('✓ Current ratio improved (better liquidity)');
+    leverageDetails.push('[PASS] Current ratio improved (better liquidity)');
   } else {
-    leverageDetails.push('✗ Current ratio declined');
+    leverageDetails.push('[FAIL] Current ratio declined');
   }
   
   // 7. No new shares issued
   if (input.sharesOutstanding <= input.sharesOutstandingPrev) {
     leverageScore++;
-    leverageDetails.push('✓ No dilution (shares flat or decreased)');
+    leverageDetails.push('[PASS] No dilution (shares flat or decreased)');
   } else {
-    leverageDetails.push('✗ Share dilution occurred');
+    leverageDetails.push('[FAIL] Share dilution occurred');
   }
   
   // Operating Efficiency
@@ -139,17 +139,17 @@ export function calculatePiotroskiScore(input: PiotroskiInput): PiotroskiResult 
   // 8. Increasing Gross Margin
   if (input.grossMargin > input.grossMarginPrev) {
     efficiencyScore++;
-    efficiencyDetails.push('✓ Gross margin improved');
+    efficiencyDetails.push('[PASS] Gross margin improved');
   } else {
-    efficiencyDetails.push('✗ Gross margin declined');
+    efficiencyDetails.push('[FAIL] Gross margin declined');
   }
   
   // 9. Increasing Asset Turnover
   if (input.assetTurnover > input.assetTurnoverPrev) {
     efficiencyScore++;
-    efficiencyDetails.push('✓ Asset turnover improved');
+    efficiencyDetails.push('[PASS] Asset turnover improved');
   } else {
-    efficiencyDetails.push('✗ Asset turnover declined');
+    efficiencyDetails.push('[FAIL] Asset turnover declined');
   }
   
   const totalScore = profitabilityScore + leverageScore + efficiencyScore;

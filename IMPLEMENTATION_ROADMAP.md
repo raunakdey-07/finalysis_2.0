@@ -4,7 +4,7 @@
 
 This document tracks the implementation of requirements from the senior engineer's comprehensive review.
 
-## ✅ Completed
+## Completed
 
 ### Infrastructure
 - [x] Switched to pnpm package manager
@@ -18,7 +18,7 @@ This document tracks the implementation of requirements from the senior engineer
 ### Analysis Modules
 - [x] Piotroski F-Score implementation with full explanations
 
-## 🚧 In Progress
+## In Progress
 
 ### Analysis Modules (Priority 1)
 - [ ] Altman Z-Score implementation
@@ -65,12 +65,12 @@ This document tracks the implementation of requirements from the senior engineer
 - [ ] Limitations documentation
 - [ ] Interview-ready architecture notes
 
-## 📋 Requirements Checklist
+## Requirements Checklist
 
 ### Hard Constraints (Non-Negotiable)
 - [x] No datasets or offline dumps
 - [x] No paid APIs
-- [ ] ❌ **CRITICAL**: Remove Yahoo Finance as core dependency
+- [ ] CRITICAL: Remove Yahoo Finance as core dependency
 - [ ] Use Indian tickers (e.g. ITC.NS)
 - [x] No cron-based pipelines
 
@@ -121,7 +121,7 @@ Each metric must include:
 - [ ] "Explain" tooltips everywhere
 - [ ] Clean, calm, intentional design
 
-## 🎯 Next Steps (Ordered by Priority)
+## Next Steps (Ordered by Priority)
 
 1. **Remove Yahoo Finance dependencies** (CRITICAL)
    - Update DATA_SOURCES.md
@@ -150,10 +150,10 @@ Each metric must include:
    - Trade-offs
    - Limitations
 
-## 📝 Notes
+## Notes
 
 ### Guiding Principle
-> "Build fewer features. Explain them extremely well."
+Build fewer features. Explain them extremely well.
 
 ### Evaluation Criteria
 - Engineering judgment
@@ -169,16 +169,16 @@ Each metric must include:
 4. Indian market focus is critical
 5. Zero-budget approach is not optional
 
-## 🔍 Current Issues to Address
+## Current Issues to Address
 
 1. **Yahoo Finance** - Must be removed completely
-2. **UI Quality** - Current design looks like "college hackathon project"
+2. **UI Quality** - Current design needs professional polish
 3. **Missing Backend** - No Fastify service yet
 4. **Limited Analysis** - Only basic metrics implemented
 5. **No Reliability Features** - Circuit breakers, retries missing
 6. **Documentation** - Missing Distrobox setup
 
-## 📊 Progress Tracking
+## Progress Tracking
 
 - **Overall Progress**: ~20%
 - **Infrastructure**: ~60%
