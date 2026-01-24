@@ -1,105 +1,118 @@
-/**
- * RSS-based news sentiment analysis
- * Fetches news from RSS feeds and performs basic sentiment analysis
- */
-
-import { NewsItem } from '@/types';
+import { NewsItem, Provenance } from '@/types';
 import cache from '@/lib/cache';
 
-/**
- * RSS feed sources for Indian financial news
- */
-const RSS_FEEDS = [
-  'https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms',
-  'https://www.moneycontrol.com/rss/marketreports.xml',
-  'https://www.livemint.com/rss/markets',
+const NEWS_TTL_MS = 8 * 60 * 60 * 1000; // 6–12h window; choose 8h middle
+const GOOGLE_NEWS_HOST = 'news.google.com';
+const GNEWS_API_KEY = process.env.GNEWS_API_KEY; // optional free tier
+
+const POSITIVE_KEYWORDS = ['gain', 'growth', 'profit', 'surge', 'rally', 'bullish', 'positive', 'strong', 'rise', 'outperform', 'buy', 'upgrade'];
+const NEGATIVE_KEYWORDS = ['loss', 'decline', 'fall', 'drop', 'bearish', 'negative', 'weak', 'underperform', 'sell', 'downgrade', 'crash'];
+
+const IMPORTANCE_KEYWORDS = [
+  'results', 'q1', 'q2', 'q3', 'q4', 'quarter', 'earnings', 'board meeting', 'filing', 'sebi', 'regulatory', 'acquisition', 'merger', 'm&a', 'capex', 'investment', 'order win', 'guidance'
 ];
 
-/**
- * Basic sentiment keywords for analysis
- */
-const POSITIVE_KEYWORDS = [
-  'gain', 'growth', 'profit', 'surge', 'rally', 'bullish', 'positive',
-  'strong', 'rise', 'up', 'high', 'outperform', 'buy', 'upgrade'
-];
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const NEGATIVE_KEYWORDS = [
-  'loss', 'decline', 'fall', 'drop', 'bearish', 'negative', 'weak',
-  'down', 'low', 'underperform', 'sell', 'downgrade', 'crash'
-];
-
-/**
- * Calculate sentiment score based on keyword matching
- * @param text - Text to analyze
- * @returns Sentiment score between -1 and 1
- */
 function calculateSentiment(text: string): { sentiment: 'positive' | 'negative' | 'neutral'; score: number } {
   const lowerText = text.toLowerCase();
-  
   let positiveCount = 0;
   let negativeCount = 0;
 
-  POSITIVE_KEYWORDS.forEach(keyword => {
+  POSITIVE_KEYWORDS.forEach((keyword) => {
     if (lowerText.includes(keyword)) positiveCount++;
   });
 
-  NEGATIVE_KEYWORDS.forEach(keyword => {
+  NEGATIVE_KEYWORDS.forEach((keyword) => {
     if (lowerText.includes(keyword)) negativeCount++;
   });
 
   const score = (positiveCount - negativeCount) / (positiveCount + negativeCount + 1);
-  
-  let sentiment: 'positive' | 'negative' | 'neutral' = 'neutral';
-  if (score > 0.2) sentiment = 'positive';
-  else if (score < -0.2) sentiment = 'negative';
 
-  return { sentiment, score };
+  if (score > 0.2) return { sentiment: 'positive', score };
+  if (score < -0.2) return { sentiment: 'negative', score };
+  return { sentiment: 'neutral', score };
 }
 
-/**
- * Parse RSS feed XML to extract news items
- * NOTE: This is a basic regex-based parser for demonstration
- * For production, use a proper XML parser library:
- * - fast-xml-parser (recommended, lightweight)
- * - xml2js (popular, feature-rich)
- * - xmldom (standards-compliant)
- * 
- * @param xml - RSS feed XML string
- * @returns Array of news items
- */
+function classifyImportance(text: string): 'high' | 'medium' | 'low' {
+  const lower = text.toLowerCase();
+  const hit = IMPORTANCE_KEYWORDS.some((k) => lower.includes(k));
+  if (hit) return 'high';
+  if (lower.includes('market') || lower.includes('industry')) return 'medium';
+  return 'low';
+}
+
+function decodeHtmlEntities(input: string): string {
+  return input
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10)));
+}
+
+function stripHtml(input: string): string {
+  // Decode HTML entities first (Google News RSS double-encodes)
+  let clean = decodeHtmlEntities(input);
+  // Unwrap CDATA
+  clean = clean.replace(/<!\[CDATA\[(.*?)\]\]>/s, '$1');
+  // Remove HTML tags (including <a>, <font>, etc.)
+  clean = clean.replace(/<[^>]*>/g, '');
+  // Decode again in case tags contained encoded content
+  clean = decodeHtmlEntities(clean);
+  // Remove leftover URLs (http/https links)
+  clean = clean.replace(/https?:\/\/[^\s]+/gi, '');
+  // Remove common link remnants from Google News RSS
+  clean = clean.replace(/\s*-\s*Read more\s*$/i, '');
+  // Collapse multiple spaces and trim
+  clean = clean.replace(/\s+/g, ' ').trim();
+  // If the result is empty or just the source name, return empty
+  if (clean.length < 10) return '';
+  return clean;
+}
+
+/** Strip " - SourceName" suffix from Google News titles and extract the source */
+function cleanTitle(title: string): { cleanedTitle: string; publication: string | null } {
+  // Match trailing " - Source" pattern (Google News appends source to titles)
+  const match = title.match(/^(.+?)\s+-\s+([A-Za-z][A-Za-z0-9\s.&'-]{2,30})$/);
+  if (match) {
+    return { cleanedTitle: match[1].trim(), publication: match[2].trim() };
+  }
+  return { cleanedTitle: title.trim(), publication: null };
+}
+
+/** Check if description is just a duplicate of the title */
+function isDuplicateDescription(title: string, description: string): boolean {
+  if (!description || description.length < 10) return true;
+  // Normalize for comparison
+  const normTitle = title.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const normDesc = description.toLowerCase().replace(/[^a-z0-9]/g, '');
+  // If description starts with most of the title, it's a duplicate
+  return normDesc.startsWith(normTitle.slice(0, Math.min(50, normTitle.length)));
+}
+
 function parseRSSFeed(xml: string, source: string): NewsItem[] {
   const items: NewsItem[] = [];
-  
-  // Basic XML parsing (in production, use a proper XML parser)
   const itemRegex = /<item>(.*?)<\/item>/gs;
   const matches = xml.matchAll(itemRegex);
 
   for (const match of matches) {
     const itemXml = match[1];
-    
     const titleMatch = itemXml.match(/<title>(.*?)<\/title>/s);
     const linkMatch = itemXml.match(/<link>(.*?)<\/link>/s);
     const descMatch = itemXml.match(/<description>(.*?)<\/description>/s);
     const pubDateMatch = itemXml.match(/<pubDate>(.*?)<\/pubDate>/s);
 
     if (titleMatch && linkMatch) {
-      // Extract and sanitize content by removing all HTML tags completely
-      // Using multiple passes to handle nested/malicious tags
-      let title = titleMatch[1].replace(/<!\[CDATA\[(.*?)\]\]>/s, '$1');
-      // Remove all HTML tags in multiple passes to prevent bypass
-      while (/<[^>]*>/g.test(title)) {
-        title = title.replace(/<[^>]*>/g, '');
-      }
-      title = title.trim();
-      
-      let description = descMatch ? descMatch[1].replace(/<!\[CDATA\[(.*?)\]\]>/s, '$1') : '';
-      // Remove all HTML tags in multiple passes to prevent bypass
-      while (/<[^>]*>/g.test(description)) {
-        description = description.replace(/<[^>]*>/g, '');
-      }
-      description = description.trim();
-      
-      const { sentiment, score } = calculateSentiment(`${title} ${description}`);
+      const rawTitle = stripHtml(titleMatch[1]);
+      const { cleanedTitle: title, publication } = cleanTitle(rawTitle);
+      const rawDescription = descMatch ? stripHtml(descMatch[1]) : '';
+      // Only keep description if it adds info beyond the title
+      const description = isDuplicateDescription(title, rawDescription) ? '' : rawDescription;
+      const { sentiment, score } = calculateSentiment(`${title} ${rawDescription}`);
+      const importance = classifyImportance(`${title} ${rawDescription}`);
 
       items.push({
         id: `${source}_${Date.now()}_${Math.random()}`,
@@ -107,9 +120,10 @@ function parseRSSFeed(xml: string, source: string): NewsItem[] {
         description,
         link: linkMatch[1].trim(),
         pubDate: pubDateMatch ? new Date(pubDateMatch[1]) : new Date(),
-        source,
+        source: publication || source,
         sentiment,
         sentimentScore: score,
+        importance,
       });
     }
   }
@@ -117,87 +131,199 @@ function parseRSSFeed(xml: string, source: string): NewsItem[] {
   return items;
 }
 
-/**
- * Fetch news from RSS feeds
- * @param limit - Maximum number of news items to return
- * @returns Array of news items with sentiment
- */
-export async function fetchNews(limit: number = 20): Promise<NewsItem[]> {
-  const cacheKey = 'rss_news_all';
-  const cached = cache.get<NewsItem[]>(cacheKey);
+async function fetchGoogleNews(query: string): Promise<NewsItem[]> {
+  // Query multiple top Indian finance sources for better coverage
+  const sites = [
+    'moneycontrol.com',
+    'livemint.com',
+    'economictimes.indiatimes.com',
+    'business-standard.com',
+    'financialexpress.com',
+    'thehindubusinessline.com',
+    'reuters.com',
+    'bloomberg.com',
+  ];
+  const siteQuery = sites.map(s => `site:${s}`).join(' OR ');
+  const encoded = encodeURIComponent(`${query} ${siteQuery}`);
+  const url = `https://${GOOGLE_NEWS_HOST}/rss/search?q=${encoded}&hl=en-IN&gl=IN&ceid=IN:en`;
+  const response = await fetch(url, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+  });
+  if (!response.ok) throw new Error(`Google News RSS error: ${response.status}`);
+  const xml = await response.text();
+  return parseRSSFeed(xml, 'Google News');
+}
 
-  if (cached) {
-    return cached.slice(0, limit);
+async function fetchGNews(query: string): Promise<NewsItem[]> {
+  if (!GNEWS_API_KEY) {
+    throw new Error('GNEWS_API_KEY missing');
   }
+  const encoded = encodeURIComponent(query);
+  const url = `https://gnews.io/api/v4/search?q=${encoded}&lang=en&country=in&max=20&apikey=${GNEWS_API_KEY}`;
+  const response = await fetch(url, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+  });
+  if (!response.ok) throw new Error(`GNews error: ${response.status}`);
+  const data = await response.json();
+  const articles = data.articles || [];
+  return articles.map((item: any) => {
+    const title = item.title || '';
+    const description = item.description || '';
+    const { sentiment, score } = calculateSentiment(`${title} ${description}`);
+    const importance = classifyImportance(`${title} ${description}`);
+    return {
+      id: `gnews_${item.url}`,
+      title,
+      description,
+      link: item.url,
+      pubDate: item.publishedAt ? new Date(item.publishedAt) : new Date(),
+      source: 'GNews',
+      sentiment,
+      sentimentScore: score,
+      importance,
+    } as NewsItem;
+  });
+}
+
+function buildProvenance(params: {
+  source: string;
+  cacheHit: boolean;
+  cacheTTL: string;
+  lastUpdated: Date;
+  confidence: Provenance['confidenceLevel'];
+  warnings?: string[];
+}): Provenance {
+  return {
+    source: params.source,
+    cacheHit: params.cacheHit,
+    cacheTTL: params.cacheTTL,
+    lastUpdated: params.lastUpdated.toISOString(),
+    confidenceLevel: params.confidence,
+    warnings: params.warnings,
+  };
+}
+
+function sortAndLimit(items: NewsItem[], limit: number): NewsItem[] {
+  return items
+    .sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime())
+    .slice(0, limit);
+}
+
+export interface NewsResult {
+  items: NewsItem[];
+  provenance: Provenance;
+}
+
+export async function fetchNews(limit: number = 20): Promise<NewsResult> {
+  const cacheKey = 'news_all';
+  const cached = cache.getEntry<NewsItem[]>(cacheKey);
+  if (cached) {
+    return {
+      items: sortAndLimit(cached.data, limit),
+      provenance: buildProvenance({
+        source: 'Google News RSS (cached)',
+        cacheHit: true,
+        cacheTTL: '8h',
+        lastUpdated: new Date(cached.timestamp),
+        confidence: 'medium',
+      }),
+    };
+  }
+
+  let aggregated: NewsItem[] = [];
+  const warnings: string[] = [];
 
   try {
-    const newsPromises = RSS_FEEDS.map(async (feedUrl) => {
-      try {
-        const response = await fetch(feedUrl, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error(`RSS fetch error: ${response.status}`);
-        }
-
-        const xml = await response.text();
-        return parseRSSFeed(xml, new URL(feedUrl).hostname);
-      } catch (error) {
-        console.error(`Error fetching RSS feed ${feedUrl}:`, error);
-        return [];
-      }
-    });
-
-    const results = await Promise.all(newsPromises);
-    const allNews = results.flat();
-
-    // Sort by date (newest first)
-    allNews.sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime());
-
-    // Cache for 10 minutes
-    cache.set(cacheKey, allNews, 600000);
-
-    return allNews.slice(0, limit);
-  } catch (error) {
-    console.error('Error fetching news:', error);
-    return [];
-  }
-}
-
-/**
- * Get news sentiment for a specific stock symbol
- * @param symbol - Stock symbol
- * @param limit - Maximum number of news items
- * @returns Filtered news items
- */
-export async function getStockNews(symbol: string, limit: number = 10): Promise<NewsItem[]> {
-  const allNews = await fetchNews(50);
-  
-  // Filter news related to the symbol
-  const filtered = allNews.filter(item => 
-    item.title.toUpperCase().includes(symbol.toUpperCase()) ||
-    item.description.toUpperCase().includes(symbol.toUpperCase())
-  );
-
-  return filtered.slice(0, limit);
-}
-
-/**
- * Calculate overall market sentiment
- * @returns Average sentiment score
- */
-export async function getMarketSentiment(): Promise<{ sentiment: string; score: number; newsCount: number }> {
-  const news = await fetchNews(50);
-  
-  if (news.length === 0) {
-    return { sentiment: 'neutral', score: 0, newsCount: 0 };
+    aggregated = await fetchGoogleNews('indian markets nse bse earnings');
+  } catch (err) {
+    warnings.push(err instanceof Error ? err.message : 'Google News RSS failed');
   }
 
-  const totalScore = news.reduce((sum, item) => sum + (item.sentimentScore || 0), 0);
-  const avgScore = totalScore / news.length;
+  if (aggregated.length === 0) {
+    try {
+      aggregated = await fetchGNews('indian markets nse bse earnings');
+    } catch (err) {
+      warnings.push(err instanceof Error ? err.message : 'GNews fallback failed');
+    }
+  }
+
+  if (aggregated.length > 0) {
+    cache.set(cacheKey, aggregated, NEWS_TTL_MS);
+  }
+
+  return {
+    items: sortAndLimit(aggregated, limit),
+    provenance: buildProvenance({
+      source: aggregated.length > 0 ? 'Google News RSS' : 'Google News RSS + GNews (empty)',
+      cacheHit: false,
+      cacheTTL: '8h',
+      lastUpdated: new Date(),
+      confidence: aggregated.length > 0 ? 'high' : 'derived',
+      warnings: warnings.length ? warnings : undefined,
+    }),
+  };
+}
+
+export async function getStockNews(symbol: string, limit: number = 10): Promise<NewsResult> {
+  const cacheKey = `news_${symbol}`;
+  const cached = cache.getEntry<NewsItem[]>(cacheKey);
+  if (cached) {
+    return {
+      items: sortAndLimit(cached.data, limit),
+      provenance: buildProvenance({
+        source: 'Google News RSS (cached)',
+        cacheHit: true,
+        cacheTTL: '8h',
+        lastUpdated: new Date(cached.timestamp),
+        confidence: 'medium',
+      }),
+    };
+  }
+
+  let aggregated: NewsItem[] = [];
+  const warnings: string[] = [];
+  const query = `${symbol} india earnings regulatory capex`;
+
+  try {
+    aggregated = await fetchGoogleNews(query);
+  } catch (err) {
+    warnings.push(err instanceof Error ? err.message : 'Google News RSS failed');
+  }
+
+  if (aggregated.length === 0) {
+    try {
+      aggregated = await fetchGNews(query);
+    } catch (err) {
+      warnings.push(err instanceof Error ? err.message : 'GNews fallback failed');
+    }
+  }
+
+  if (aggregated.length > 0) {
+    cache.set(cacheKey, aggregated, NEWS_TTL_MS);
+  }
+
+  return {
+    items: sortAndLimit(aggregated, limit),
+    provenance: buildProvenance({
+      source: aggregated.length > 0 ? 'Google News RSS' : 'Google News RSS + GNews (empty)',
+      cacheHit: false,
+      cacheTTL: '8h',
+      lastUpdated: new Date(),
+      confidence: aggregated.length > 0 ? 'high' : 'derived',
+      warnings: warnings.length ? warnings : undefined,
+    }),
+  };
+}
+
+export async function getMarketSentiment(): Promise<{ sentiment: string; score: number; newsCount: number; provenance: Provenance }> {
+  const { items, provenance } = await fetchNews(50);
+
+  if (items.length === 0) {
+    return { sentiment: 'neutral', score: 0, newsCount: 0, provenance };
+  }
+
+  const totalScore = items.reduce((sum, item) => sum + (item.sentimentScore || 0), 0);
+  const avgScore = totalScore / items.length;
 
   let sentiment = 'neutral';
   if (avgScore > 0.1) sentiment = 'positive';
@@ -206,6 +332,7 @@ export async function getMarketSentiment(): Promise<{ sentiment: string; score: 
   return {
     sentiment,
     score: avgScore,
-    newsCount: news.length,
+    newsCount: items.length,
+    provenance,
   };
 }

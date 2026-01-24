@@ -8,6 +8,12 @@ export interface StockPrice {
   change: number;
   changePercent: number;
   volume: number;
+  open?: number;
+  high?: number;
+  low?: number;
+  previousClose?: number;
+  fiftyTwoWeekHigh?: number;
+  fiftyTwoWeekLow?: number;
   timestamp: Date;
 }
 
@@ -22,6 +28,10 @@ export interface StockFundamentals {
   bookValue: number | null;
   faceValue: number;
   industry: string;
+  roe?: number | null;
+  roce?: number | null;
+  debtToEquity?: number | null;
+  revenueGrowth?: number | null;
   lastUpdated: Date;
 }
 
@@ -34,6 +44,7 @@ export interface NewsItem {
   source: string;
   sentiment?: 'positive' | 'negative' | 'neutral';
   sentimentScore?: number;
+  importance?: 'high' | 'medium' | 'low';
 }
 
 export interface StockMetrics {

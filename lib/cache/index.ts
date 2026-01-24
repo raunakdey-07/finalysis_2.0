@@ -28,6 +28,14 @@ class CacheManager {
    * Get a value from cache if not expired
    */
   get<T>(key: string): T | null {
+    const entry = this.getEntry<T>(key);
+    return entry ? entry.data : null;
+  }
+
+  /**
+   * Get full cache entry (data + metadata) if valid
+   */
+  getEntry<T>(key: string): CacheEntry<T> | null {
     const entry = this.cache.get(key) as CacheEntry<T> | undefined;
 
     if (!entry) {
@@ -42,7 +50,7 @@ class CacheManager {
       return null;
     }
 
-    return entry.data;
+    return entry;
   }
 
   /**

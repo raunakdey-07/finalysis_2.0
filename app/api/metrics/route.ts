@@ -6,7 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { calculateMetrics, getRecommendation } from '@/lib/metrics';
 import { fetchNSEQuote } from '@/lib/nse';
-import { ApiResponse, StockFundamentals, StockMetrics } from '@/types';
+import { fetchFundamentals } from '@/lib/fundamentals';
+import { rateLimit, getClientId, RATE_LIMITS } from '@/lib/rate-limit';
+import { ApiResponse, Provenance, StockFundamentals, StockMetrics } from '@/types';
 
 /**
  * Get mock fundamental data for demonstration
@@ -21,21 +23,18 @@ import { ApiResponse, StockFundamentals, StockMetrics } from '@/types';
  * @param symbol - Stock symbol
  * @returns Mock fundamental data
  */
-const getMockFundamentals = (symbol: string): StockFundamentals => ({
-  symbol,
-  companyName: `${symbol} Limited`,
-  marketCap: 100000000000,
-  peRatio: 25.5,
-  pbRatio: 3.2,
-  dividendYield: 1.5,
-  epsLast4Quarters: 45.2,
-  bookValue: 250.0,
-  faceValue: 10,
-  industry: 'Technology',
-  lastUpdated: new Date(),
-});
-
 export async function GET(request: NextRequest) {
+  // Rate limiting
+  const clientId = getClientId(request.headers);
+  const rateLimitResult = rateLimit(`metrics:${clientId}`, RATE_LIMITS.metrics);
+  
+  if (!rateLimitResult.success) {
+    return NextResponse.json(
+      { success: false, error: `Rate limit exceeded. Try again in ${rateLimitResult.resetIn}s.`, timestamp: new Date() },
+      { status: 429, headers: { 'Retry-After': String(rateLimitResult.resetIn) } }
+    );
+  }
+
   try {
     const searchParams = request.nextUrl.searchParams;
     const symbol = searchParams.get('symbol');
@@ -52,39 +51,62 @@ export async function GET(request: NextRequest) {
     const symbolUpper = symbol.toUpperCase();
     
     // Fetch current price
-    const price = await fetchNSEQuote(symbolUpper);
-    if (!price) {
-      const errorResponse: ApiResponse<null> = {
-        success: false,
-        error: `Unable to fetch price data for symbol: ${symbol}`,
+    const { price, provenance: priceProvenance } = await fetchNSEQuote(symbolUpper);
+    const { fundamentals, provenance: fundamentalsProvenance } = await fetchFundamentals(symbolUpper);
+
+    if (!fundamentals) {
+      const response: ApiResponse<null> = {
+        success: true,
+        data: null,
+        error: `Unable to fetch fundamentals for ${symbol}.`,
         timestamp: new Date(),
+        provenance: fundamentalsProvenance,
       };
-      return NextResponse.json(errorResponse, { status: 404 });
+      return NextResponse.json(response, { status: 200 });
     }
 
-    // Get fundamentals (mocked for now)
-    const fundamentals = getMockFundamentals(symbolUpper);
+    if (!price) {
+      const response: ApiResponse<StockFundamentals> = {
+        success: true,
+        data: fundamentals,
+        error: `Unable to fetch live price for ${symbol}. Fundamentals served from cache.`,
+        timestamp: new Date(),
+        provenance: fundamentalsProvenance,
+      };
+      return NextResponse.json(response, { status: 200 });
+    }
 
-    // Calculate metrics
     const metrics = calculateMetrics(fundamentals, price);
     const recommendation = getRecommendation(metrics.overallScore);
 
-    const response: ApiResponse<StockMetrics & { recommendation: string }> = {
+    const response: ApiResponse<StockMetrics & { recommendation: string; fundamentals: StockFundamentals }> = {
       success: true,
       data: {
         ...metrics,
         recommendation,
+        fundamentals,
       },
       timestamp: new Date(),
+      provenance: {
+        source: `${priceProvenance.source} + ${fundamentalsProvenance.source}`,
+        lastUpdated: priceProvenance.lastUpdated,
+        cacheTTL: `${priceProvenance.cacheTTL} / ${fundamentalsProvenance.cacheTTL}`,
+        cacheHit: priceProvenance.cacheHit || fundamentalsProvenance.cacheHit,
+        confidenceLevel: priceProvenance.confidenceLevel,
+        warnings: [
+          ...(priceProvenance.warnings || []),
+          ...(fundamentalsProvenance.warnings || []),
+        ],
+      },
     };
 
-    return NextResponse.json(response);
+    return NextResponse.json(response, { status: 200 });
   } catch (error) {
     const errorResponse: ApiResponse<null> = {
       success: false,
       error: error instanceof Error ? error.message : 'Internal server error',
       timestamp: new Date(),
     };
-    return NextResponse.json(errorResponse, { status: 500 });
+    return NextResponse.json(errorResponse, { status: 200 });
   }
 }
