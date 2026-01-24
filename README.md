@@ -1,136 +1,75 @@
-# Finalysis 3.0
+# Finalysis
 
-A from-scratch, API-only, zero-budget stock analysis application for Indian equities built with Next.js, TypeScript, and Tailwind CSS.
+**Simple stock research for India** — Understand any NSE stock in 30 seconds.
 
-## Overview
+🔗 **Live:** [fin-alysis.vercel.app](https://fin-alysis.vercel.app/)
 
-Finalysis 3.0 is a production-grade stock analysis platform designed specifically for Indian equities (NSE). It provides comprehensive market analysis, cached fundamentals, RSS-based news sentiment, and explainable metrics - all without requiring paid APIs or datasets.
+## What it does
+
+Finalysis answers three questions about any NSE stock:
+
+1. **Is it a good business?** — ROE, ROCE, dividend yield
+2. **Is it getting better?** — Price momentum, news sentiment
+3. **Is the price fair?** — P/E, P/B, book value
+
+No jargon. No overwhelming data. Just clear verdicts for everyday investors.
 
 ## Features
 
-- **NSE Price Integration**: Real-time price data from National Stock Exchange
-- **Cached Fundamentals**: Efficient caching layer for fundamental stock data
-- **RSS-Based News Sentiment**: Automated sentiment analysis from news feeds
-- **Explainable Metrics**: Transparent, interpretable financial metrics
-- **Production-Grade UI**: Clean, responsive interface built with Tailwind CSS
-- **API-First Architecture**: RESTful API design for scalability
-- **Zero-Budget**: No paid APIs or datasets required
+- **8 Popular Stocks** — ITC, TCS, Reliance, HDFC Bank, Infosys, Airtel, HUL, Asian Paints
+- **Search Any NSE Ticker** — Works with any listed company
+- **Real-time Prices** — From NSE public endpoints (10min cache)
+- **Fundamental Data** — Scraped from Screener.in (60-day cache)
+- **News Sentiment** — Google News RSS with keyword-based analysis
+- **Mobile Friendly** — Works on any device
+- **Zero Cost** — No paid APIs required
 
 ## Tech Stack
 
-- **Framework**: Next.js 16.1+ (App Router)
-- **Language**: TypeScript 5+
-- **Styling**: Tailwind CSS 4+
-- **Runtime**: Node.js 20+
-- **Package Manager**: pnpm
+| Layer | Technology |
+|-------|------------|
+| Framework | Next.js 16 (App Router) |
+| Language | TypeScript |
+| Styling | Tailwind CSS 4 |
+| Hosting | Vercel |
+| Data | NSE, Screener.in, Google News RSS |
 
-## Prerequisites
+## Run Locally
 
-- Node.js 20.x or higher
-- pnpm 10.x or higher
-
-## Getting Started
-
-### Installation
-
-1. Clone the repository:
-```bash
+\`\`\`bash
 git clone https://github.com/raunakdey-07/finalysis_2.0.git
 cd finalysis_2.0
-```
+npm install
+npm run dev
+\`\`\`
 
-2. Install dependencies:
-```bash
-pnpm install
-```
+Open [http://localhost:3000](http://localhost:3000)
 
-3. Run the development server:
-```bash
-pnpm run dev
-```
+## API Endpoints
 
-4. Open [http://localhost:3000](http://localhost:3000) in your browser
+| Endpoint | Description | Rate Limit |
+|----------|-------------|------------|
+| \`/api/nse/quote?symbol=ITC\` | Live price | 60/min |
+| \`/api/metrics?symbol=ITC\` | Fundamentals + scores | 30/min |
+| \`/api/news?symbol=ITC\` | News with sentiment | 30/min |
+| \`/api/nse/search?q=hdfc\` | Search tickers | 20/min |
 
-### Build for Production
+## Data Sources
 
-```bash
-pnpm run build
-pnpm start
-```
+| Source | Data | Cache TTL |
+|--------|------|-----------|
+| NSE public endpoints | Live prices, change % | 10 minutes |
+| Screener.in (scraped) | P/E, P/B, ROE, ROCE, etc. | 60 days |
+| Google News RSS | Headlines, sentiment | 8 hours |
 
-## Project Structure
+## Disclaimer
 
-```
-finalysis_2.0/              # Repository name (Finalysis 3.0 codebase)
-├── app/                    # Next.js App Router
-│   ├── api/               # API routes
-│   │   ├── nse/          # NSE price data endpoints
-│   │   ├── fundamentals/  # Cached fundamental data
-│   │   ├── news/         # RSS news sentiment
-│   │   └── metrics/      # Explainable metrics
-│   ├── layout.tsx        # Root layout
-│   └── page.tsx          # Home page
-├── lib/                   # Utility functions and helpers
-│   ├── cache/            # Caching implementations
-│   ├── nse/              # NSE API integrations
-│   ├── sentiment/        # Sentiment analysis
-│   └── metrics/          # Metric calculations
-├── components/           # React components
-├── types/               # TypeScript type definitions
-├── public/              # Static assets
-└── README.md
-```
-
-## Available Scripts
-
-- `pnpm run dev` - Start development server
-- `pnpm run build` - Build for production
-- `pnpm start` - Start production server
-- `pnpm run lint` - Run ESLint
-
-## Architecture
-
-### API-Only Design
-All data processing and business logic is handled through API routes, ensuring:
-- Clean separation of concerns
-- Easy scalability
-- Reusable endpoints
-
-### Caching Strategy
-- In-memory caching for frequently accessed data
-- Configurable TTL (Time To Live) for different data types
-- Efficient cache invalidation
-
-### Data Sources
-- **NSE Data**: Public NSE APIs for price information
-- **RSS Feeds**: Curated financial news sources
-- **Fundamentals**: Publicly available financial statements
-
-## Deployment
-
-This application can be deployed to:
-- **Vercel** (Recommended for Next.js)
-- **Railway**
-- **DigitalOcean App Platform**
-- **Any Node.js hosting platform**
-
-### Environment Variables
-Create a `.env.local` file for local development:
-```bash
-# Add your environment variables here
-NEXT_PUBLIC_API_URL=http://localhost:3000
-```
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+⚠️ **This is not financial advice.** Data may be delayed, incomplete, or inaccurate. Always verify from official sources and consult a SEBI-registered advisor before investing.
 
 ## License
 
-See [LICENSE](LICENSE) file for details.
+MIT — See [LICENSE](LICENSE)
 
-## Acknowledgments
+---
 
-- Built with [Next.js](https://nextjs.org)
-- Styled with [Tailwind CSS](https://tailwindcss.com)
-- Powered by open-source tools and public APIs
+Built by [@raunakdey-07](https://github.com/raunakdey-07)
