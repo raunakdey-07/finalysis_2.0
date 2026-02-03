@@ -380,7 +380,7 @@ export default function Page() {
   const fallbackTicker: DemoTicker = {
     name: symbol,
     price: price?.price ?? 0,
-    changePct: price?.changePercent ?? 0,
+    changePct: price?.daily_change_percent ?? 0,
     sentiment: "neutral",
     lastUpdated: quoteProv?.lastUpdated ? new Date(quoteProv.lastUpdated).toLocaleString() : "recent",
     cacheTTL: quoteProv?.cacheTTL ?? "10m",
@@ -390,7 +390,7 @@ export default function Page() {
   const ticker = baseTicker ?? fallbackTicker;
   const displayName = ticker.name;
   const effectivePrice = price?.price ?? ticker.price;
-  const effectiveChange = price?.changePercent ?? ticker.changePct;
+  const effectiveChange = price?.daily_change_percent ?? ticker.changePct;
   const lastUpdatedLabel = quoteProv?.lastUpdated
     ? relativeTime(new Date(quoteProv.lastUpdated))
     : "recently";
@@ -446,25 +446,35 @@ export default function Page() {
           <section className="mb-10">
             <p className="mb-3 text-xs font-medium uppercase tracking-wider text-stone-400">Popular stocks</p>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {Object.entries(DEMO_TICKERS).map(([key, value]) => (
-              <button
-                key={key}
-                onClick={() => {
-                  setSymbol(key);
-                  setSymbolInput(key);
-                }}
-                className={`flex items-center justify-between rounded-lg border bg-white px-3 py-2.5 text-left transition ${
-                  symbol === key 
-                    ? "border-stone-800 ring-1 ring-stone-800" 
-                    : "border-stone-200 hover:border-stone-400"
-                }`}
-              >
-                <span className="text-sm font-medium text-stone-800">{value.name}</span>
-                <span className={`text-xs font-medium ${value.changePct >= 0 ? "text-teal-600" : "text-amber-600"}`}>
-                  {value.changePct >= 0 ? "+" : ""}{value.changePct.toFixed(1)}%
-                </span>
-              </button>
-            ))}
+            {Object.entries(DEMO_TICKERS).map(([key, value]) => {
+              // Show live data only when selected and loaded
+              const isSelected = symbol === key;
+              const showLiveData = isSelected && !loadingQuote && price;
+              
+              return (
+                <button
+                  key={key}
+                  onClick={() => {
+                    setSymbol(key);
+                    setSymbolInput(key);
+                  }}
+                  className={`flex items-center justify-between rounded-lg border bg-white px-3 py-2.5 text-left transition ${
+                    isSelected 
+                      ? "border-stone-800 ring-1 ring-stone-800" 
+                      : "border-stone-200 hover:border-stone-400"
+                  }`}
+                >
+                  <span className="text-sm font-medium text-stone-800">{value.name}</span>
+                  {showLiveData ? (
+                    <span className={`text-xs font-medium ${(price?.daily_change_percent ?? 0) >= 0 ? "text-teal-600" : "text-amber-600"}`}>
+                      {(price?.daily_change_percent ?? 0) >= 0 ? "+" : ""}{(price?.daily_change_percent ?? 0).toFixed(1)}%
+                    </span>
+                  ) : (
+                    <span className="text-xs font-medium text-stone-300">—</span>
+                  )}
+                </button>
+              );
+            })}
           </div>
           <form onSubmit={handleSearch} className="mt-4 flex gap-2">
             <input

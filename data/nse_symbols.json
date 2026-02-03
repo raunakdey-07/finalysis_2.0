@@ -1,0 +1,482 @@
+[
+  {
+    "symbol": "ITC.NS",
+    "name": "ITC Limited",
+    "aliases": ["itc", "itc limited", "itc ltd"]
+  },
+  {
+    "symbol": "TCS.NS",
+    "name": "Tata Consultancy Services",
+    "aliases": ["tcs", "tata consultancy", "tata consultancy services"]
+  },
+  {
+    "symbol": "RELIANCE.NS",
+    "name": "Reliance Industries Limited",
+    "aliases": ["reliance", "reliance industries", "ril"]
+  },
+  {
+    "symbol": "HDFCBANK.NS",
+    "name": "HDFC Bank Limited",
+    "aliases": ["hdfc bank", "hdfc", "hdfcbank"]
+  },
+  {
+    "symbol": "INFY.NS",
+    "name": "Infosys Limited",
+    "aliases": ["infosys", "infy"]
+  },
+  {
+    "symbol": "BHARTIARTL.NS",
+    "name": "Bharti Airtel Limited",
+    "aliases": ["airtel", "bharti airtel", "bharti", "bhartiartl"]
+  },
+  {
+    "symbol": "HINDUNILVR.NS",
+    "name": "Hindustan Unilever Limited",
+    "aliases": ["hul", "hindustan unilever", "hindunilvr"]
+  },
+  {
+    "symbol": "ASIANPAINT.NS",
+    "name": "Asian Paints Limited",
+    "aliases": ["asian paints", "asianpaint"]
+  },
+  {
+    "symbol": "BAJAJHFL.NS",
+    "name": "Bajaj Housing Finance Limited",
+    "aliases": ["bajaj housing", "bajaj hfl", "bajaj housing finance", "bajajhfl"]
+  },
+  {
+    "symbol": "AXISBANK.NS",
+    "name": "Axis Bank Limited",
+    "aliases": ["axis bank", "axis", "axisbank"]
+  },
+  {
+    "symbol": "MARUTI.NS",
+    "name": "Maruti Suzuki India Limited",
+    "aliases": ["maruti", "maruti suzuki", "maruti suzuki india"]
+  },
+  {
+    "symbol": "WIPRO.NS",
+    "name": "Wipro Limited",
+    "aliases": ["wipro"]
+  },
+  {
+    "symbol": "KOTAKBANK.NS",
+    "name": "Kotak Mahindra Bank Limited",
+    "aliases": ["kotak bank", "kotak", "kotak mahindra"]
+  },
+  {
+    "symbol": "LTIM.NS",
+    "name": "LTIMindtree Limited",
+    "aliases": ["ltim", "ltimindtree"]
+  },
+  {
+    "symbol": "SUNPHARMA.NS",
+    "name": "Sun Pharmaceutical Industries Limited",
+    "aliases": ["sun pharma", "sunpharma", "sun pharmaceutical"]
+  },
+  {
+    "symbol": "ICICIBANK.NS",
+    "name": "ICICI Bank Limited",
+    "aliases": ["icici bank", "icici", "icicibank"]
+  },
+  {
+    "symbol": "LT.NS",
+    "name": "Larsen & Toubro Limited",
+    "aliases": ["larsen toubro", "lt", "larsen and toubro", "l&t"]
+  },
+  {
+    "symbol": "SBIN.NS",
+    "name": "State Bank of India",
+    "aliases": ["state bank", "sbi", "state bank of india"]
+  },
+  {
+    "symbol": "POWERGRID.NS",
+    "name": "Power Grid Corporation of India Limited",
+    "aliases": ["power grid", "powergrid", "pgcil"]
+  },
+  {
+    "symbol": "NTPC.NS",
+    "name": "NTPC Limited",
+    "aliases": ["ntpc", "national thermal power"]
+  },
+  {
+    "symbol": "IOC.NS",
+    "name": "Indian Oil Corporation Limited",
+    "aliases": ["ioc", "indian oil", "indian oil corporation"]
+  },
+  {
+    "symbol": "BAJAJIAUTO.NS",
+    "name": "Bajaj Auto Limited",
+    "aliases": ["bajaj auto", "bajajiauto"]
+  },
+  {
+    "symbol": "TITAN.NS",
+    "name": "Titan Company Limited",
+    "aliases": ["titan", "titan company"]
+  },
+  {
+    "symbol": "HDFC.NS",
+    "name": "Housing Development Finance Corporation Limited",
+    "aliases": ["hdfc", "hdfc ltd", "housing development finance"]
+  },
+  {
+    "symbol": "DRREDDY.NS",
+    "name": "Dr. Reddy's Laboratories Limited",
+    "aliases": ["dr reddy", "dr reddy's", "drreddy"]
+  },
+  {
+    "symbol": "CIPLA.NS",
+    "name": "Cipla Limited",
+    "aliases": ["cipla"]
+  },
+  {
+    "symbol": "HEROMOTOCO.NS",
+    "name": "Hero MotoCorp Limited",
+    "aliases": ["hero motocorp", "hero", "heromotoco"]
+  },
+  {
+    "symbol": "M&M.NS",
+    "name": "Mahindra & Mahindra Limited",
+    "aliases": ["mahindra", "m&m", "mahindra and mahindra"]
+  },
+  {
+    "symbol": "ULTRACEMCO.NS",
+    "name": "Ultratech Cement Limited",
+    "aliases": ["ultratech cement", "ultratech", "ultracemco"]
+  },
+  {
+    "symbol": "HINDALCO.NS",
+    "name": "Hindalco Industries Limited",
+    "aliases": ["hindalco", "hindalco industries"]
+  },
+  {
+    "symbol": "GAIL.NS",
+    "name": "GAIL India Limited",
+    "aliases": ["gail", "gail india"]
+  },
+  {
+    "symbol": "HCLTECH.NS",
+    "name": "HCL Technologies Limited",
+    "aliases": ["hcl tech", "hcl", "hcl technologies"]
+  },
+  {
+    "symbol": "TECHM.NS",
+    "name": "Tech Mahindra Limited",
+    "aliases": ["tech mahindra", "techm"]
+  },
+  {
+    "symbol": "LUPIN.NS",
+    "name": "Lupin Limited",
+    "aliases": ["lupin"]
+  },
+  {
+    "symbol": "GRASIM.NS",
+    "name": "Grasim Industries Limited",
+    "aliases": ["grasim"]
+  },
+  {
+    "symbol": "JSWSTEEL.NS",
+    "name": "JSW Steel Limited",
+    "aliases": ["jsw steel", "jswsteel"]
+  },
+  {
+    "symbol": "ADANIPORTS.NS",
+    "name": "Adani Ports and Special Economic Zone Limited",
+    "aliases": ["adani ports", "adaniports"]
+  },
+  {
+    "symbol": "TATAMOTORS.NS",
+    "name": "Tata Motors Limited",
+    "aliases": ["tata motors", "tatamotors"]
+  },
+  {
+    "symbol": "TATASTEEL.NS",
+    "name": "Tata Steel Limited",
+    "aliases": ["tata steel", "tatasteel"]
+  },
+  {
+    "symbol": "APOLLOHOSP.NS",
+    "name": "Apollo Hospitals Enterprise Limited",
+    "aliases": ["apollo hospitals", "apollo", "apollohosp"]
+  },
+  {
+    "symbol": "BRITANNIA.NS",
+    "name": "Britannia Industries Limited",
+    "aliases": ["britannia"]
+  },
+  {
+    "symbol": "COALINDIA.NS",
+    "name": "Coal India Limited",
+    "aliases": ["coal india", "coalindia"]
+  },
+  {
+    "symbol": "DLF.NS",
+    "name": "DLF Limited",
+    "aliases": ["dlf"]
+  },
+  {
+    "symbol": "SHREECEM.NS",
+    "name": "Shree Cement Limited",
+    "aliases": ["shree cement", "shreecem"]
+  },
+  {
+    "symbol": "SIEMENSCO.NS",
+    "name": "Siemens Limited",
+    "aliases": ["siemens", "siemensco"]
+  },
+  {
+    "symbol": "SHRIRAMFIN.NS",
+    "name": "Shriram Finance Limited",
+    "aliases": ["shriram finance", "shriramfin"]
+  },
+  {
+    "symbol": "NESTLEIND.NS",
+    "name": "Nestlé India Limited",
+    "aliases": ["nestle", "nestleind", "nestle india"]
+  },
+  {
+    "symbol": "TORRENTPHAR.NS",
+    "name": "Torrent Pharmaceuticals Limited",
+    "aliases": ["torrent pharma", "torrentphar"]
+  },
+  {
+    "symbol": "ABBOTINDIA.NS",
+    "name": "Abbott India Limited",
+    "aliases": ["abbott india", "abbotindia"]
+  },
+  {
+    "symbol": "BAJAJFINSV.NS",
+    "name": "Bajaj Finserv Limited",
+    "aliases": ["bajaj finserv", "bajajfinsv"]
+  },
+  {
+    "symbol": "BERGEPAINT.NS",
+    "name": "Berger Paints India Limited",
+    "aliases": ["berger paints", "bergepaint"]
+  },
+  {
+    "symbol": "BIOCON.NS",
+    "name": "Biocon Limited",
+    "aliases": ["biocon"]
+  },
+  {
+    "symbol": "BPCL.NS",
+    "name": "Bharat Petroleum Corporation Limited",
+    "aliases": ["bpcl", "bharat petroleum"]
+  },
+  {
+    "symbol": "CANBK.NS",
+    "name": "Canara Bank",
+    "aliases": ["canara bank", "canbk"]
+  },
+  {
+    "symbol": "CGPOWER.NS",
+    "name": "CG Power and Industrial Solutions Limited",
+    "aliases": ["cg power", "cgpower"]
+  },
+  {
+    "symbol": "COLPAL.NS",
+    "name": "Colgate-Palmolive (India) Limited",
+    "aliases": ["colgate palmolive", "colpal"]
+  },
+  {
+    "symbol": "DABUR.NS",
+    "name": "Dabur India Limited",
+    "aliases": ["dabur"]
+  },
+  {
+    "symbol": "EICHERMOT.NS",
+    "name": "Eicher Motors Limited",
+    "aliases": ["eicher motors", "eichermot"]
+  },
+  {
+    "symbol": "ESCORTS.NS",
+    "name": "Escorts Limited",
+    "aliases": ["escorts"]
+  },
+  {
+    "symbol": "EXIDEIND.NS",
+    "name": "Exide Industries Limited",
+    "aliases": ["exide", "exideind"]
+  },
+  {
+    "symbol": "FEDERALBNK.NS",
+    "name": "Federal Bank Limited",
+    "aliases": ["federal bank", "federalbnk"]
+  },
+  {
+    "symbol": "GLENMARK.NS",
+    "name": "Glenmark Pharmaceuticals Limited",
+    "aliases": ["glenmark", "glenmark pharma"]
+  },
+  {
+    "symbol": "GODREJCP.NS",
+    "name": "Godrej Consumer Products Limited",
+    "aliases": ["godrej", "godrej consumer", "godrejcp"]
+  },
+  {
+    "symbol": "GODREJPROP.NS",
+    "name": "Godrej Properties Limited",
+    "aliases": ["godrej properties", "godrejprop"]
+  },
+  {
+    "symbol": "HAVELLS.NS",
+    "name": "Havells India Limited",
+    "aliases": ["havells"]
+  },
+  {
+    "symbol": "IDBI.NS",
+    "name": "IDBI Bank Limited",
+    "aliases": ["idbi", "idbi bank"]
+  },
+  {
+    "symbol": "INDIGO.NS",
+    "name": "InterGlobe Aviation Limited",
+    "aliases": ["indigo", "interglobe"]
+  },
+  {
+    "symbol": "INDUSIND.NS",
+    "name": "IndusInd Bank Limited",
+    "aliases": ["indusind", "indusind bank"]
+  },
+  {
+    "symbol": "JSWGREEN.NS",
+    "name": "JSW Energy Limited",
+    "aliases": ["jsw energy", "jswgreen"]
+  },
+  {
+    "symbol": "JUBILANT.NS",
+    "name": "Jubilant Pharmova Limited",
+    "aliases": ["jubilant", "jubilant pharma"]
+  },
+  {
+    "symbol": "LAXMIMACH.NS",
+    "name": "Lakshmi Machine Works Limited",
+    "aliases": ["laxmi machine", "laxmimach"]
+  },
+  {
+    "symbol": "LICHSGFIN.NS",
+    "name": "LIC Housing Finance Limited",
+    "aliases": ["lichsgfin", "lic housing"]
+  },
+  {
+    "symbol": "MAHANAGAR.NS",
+    "name": "Mahanagar Gas Limited",
+    "aliases": ["mahanagar gas", "mahanagar"]
+  },
+  {
+    "symbol": "MANAPPURAM.NS",
+    "name": "Manappuram Finance Limited",
+    "aliases": ["manappuram"]
+  },
+  {
+    "symbol": "MAXHEALTH.NS",
+    "name": "Max Healthcare Institute Limited",
+    "aliases": ["max healthcare", "maxhealth"]
+  },
+  {
+    "symbol": "MPHASIS.NS",
+    "name": "Mphasis Limited",
+    "aliases": ["mphasis"]
+  },
+  {
+    "symbol": "MUTHOOTFIN.NS",
+    "name": "Muthoot Finance Limited",
+    "aliases": ["muthoot finance", "muthootfin"]
+  },
+  {
+    "symbol": "NATCOPHARM.NS",
+    "name": "Natco Pharma Limited",
+    "aliases": ["natco pharma", "natcopharm"]
+  },
+  {
+    "symbol": "NETWORK18.NS",
+    "name": "Network18 Media & Investments Limited",
+    "aliases": ["network18"]
+  },
+  {
+    "symbol": "NHPC.NS",
+    "name": "NHPC Limited",
+    "aliases": ["nhpc"]
+  },
+  {
+    "symbol": "NMDC.NS",
+    "name": "NMDC Limited",
+    "aliases": ["nmdc"]
+  },
+  {
+    "symbol": "PIIND.NS",
+    "name": "PI Industries Limited",
+    "aliases": ["pi industries", "piind"]
+  },
+  {
+    "symbol": "PIDILITIND.NS",
+    "name": "Pidilite Industries Limited",
+    "aliases": ["pidilite", "pidilitind"]
+  },
+  {
+    "symbol": "SAIL.NS",
+    "name": "Steel Authority of India Limited",
+    "aliases": ["sail", "steel authority of india"]
+  },
+  {
+    "symbol": "SBICARD.NS",
+    "name": "SBI Card and Payment Services Limited",
+    "aliases": ["sbi card", "sbicard"]
+  },
+  {
+    "symbol": "SBILIFE.NS",
+    "name": "SBI Life Insurance Company Limited",
+    "aliases": ["sbi life", "sbilife"]
+  },
+  {
+    "symbol": "SUZLON.NS",
+    "name": "Suzlon Energy Limited",
+    "aliases": ["suzlon"]
+  },
+  {
+    "symbol": "TATACHEM.NS",
+    "name": "Tata Chemicals Limited",
+    "aliases": ["tata chemicals", "tatachem"]
+  },
+  {
+    "symbol": "TATACONSUM.NS",
+    "name": "Tata Consumer Products Limited",
+    "aliases": ["tata consumer", "tataconsum"]
+  },
+  {
+    "symbol": "TATAPOWER.NS",
+    "name": "Tata Power Company Limited",
+    "aliases": ["tata power", "tatapower"]
+  },
+  {
+    "symbol": "UNION.NS",
+    "name": "Union Bank of India",
+    "aliases": ["union bank", "union"]
+  },
+  {
+    "symbol": "VEDL.NS",
+    "name": "Vedanta Limited",
+    "aliases": ["vedanta", "vedl"]
+  },
+  {
+    "symbol": "VOLTAS.NS",
+    "name": "Voltas Limited",
+    "aliases": ["voltas"]
+  },
+  {
+    "symbol": "YESBANK.NS",
+    "name": "Yes Bank Limited",
+    "aliases": ["yes bank", "yesbank"]
+  },
+  {
+    "symbol": "ZEEL.NS",
+    "name": "Zee Entertainment Enterprises Limited",
+    "aliases": ["zee", "zee entertainment", "zeel"]
+  },
+  {
+    "symbol": "ZYDUSLIFE.NS",
+    "name": "Zydus Lifesciences Limited",
+    "aliases": ["zydus", "zyduslife"]
+  }
+]

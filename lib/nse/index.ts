@@ -146,6 +146,11 @@ export async function fetchNSEQuote(symbol: string): Promise<QuoteResult> {
       fiftyTwoWeekHigh: data.priceInfo?.weekHighLow?.max ?? undefined,
       fiftyTwoWeekLow: data.priceInfo?.weekHighLow?.min ?? undefined,
       timestamp: new Date(),
+      // Backend canonical: daily_change_percent = ((current_price - previous_close) / previous_close) * 100
+      daily_change_percent: 
+        data.priceInfo?.previousClose && data.priceInfo?.previousClose > 0
+          ? ((data.priceInfo.lastPrice - data.priceInfo.previousClose) / data.priceInfo.previousClose) * 100
+          : 0,
     };
 
     cache.set(cacheKey, stockPrice, QUOTE_TTL_MS);

@@ -7,6 +7,7 @@ export interface StockPrice {
   price: number;
   change: number;
   changePercent: number;
+  daily_change_percent: number; // Backend canonical value: ((current_price - previous_close) / previous_close) * 100
   volume: number;
   open?: number;
   high?: number;

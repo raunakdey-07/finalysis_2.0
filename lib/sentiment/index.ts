@@ -166,18 +166,18 @@ async function fetchGNews(query: string): Promise<NewsItem[]> {
   if (!response.ok) throw new Error(`GNews error: ${response.status}`);
   const data = await response.json();
   const articles = data.articles || [];
-  return articles.map((item: any) => {
-    const title = item.title || '';
-    const description = item.description || '';
-    const { sentiment, score } = calculateSentiment(`${title} ${description}`);
-    const importance = classifyImportance(`${title} ${description}`);
-    return {
-      id: `gnews_${item.url}`,
-      title,
-      description,
-      link: item.url,
-      pubDate: item.publishedAt ? new Date(item.publishedAt) : new Date(),
-      source: 'GNews',
+    return articles.map((item: { title?: string; description?: string; url?: string; publishedAt?: string }) => {
+      const title = item.title || '';
+      const description = item.description || '';
+      const { sentiment, score } = calculateSentiment(`${title} ${description}`);
+      const importance = classifyImportance(`${title} ${description}`);
+      return {
+        id: `gnews_${item.url}`,
+        title,
+        description,
+        link: item.url,
+        pubDate: item.publishedAt ? new Date(item.publishedAt) : new Date(),
+        source: 'GNews',
       sentiment,
       sentimentScore: score,
       importance,
