@@ -106,7 +106,7 @@ async function retryWithBackoff(fn, service, maxRetries = 3) {
 }
 
 // Health check endpoint
-fastify.get('/health', async (request, reply) => {
+fastify.get('/health', async () => {
   return {
     status: 'ok',
     timestamp: new Date().toISOString(),
@@ -119,7 +119,7 @@ fastify.get('/health', async (request, reply) => {
 });
 
 // Stock quote endpoint
-fastify.get('/api/quote/:symbol', async (request, reply) => {
+fastify.get('/api/quote/:symbol', async (request) => {
   const { symbol } = request.params;
   
   // This would call the NSE integration
@@ -144,7 +144,7 @@ fastify.get('/api/quote/:symbol', async (request, reply) => {
 });
 
 // Fundamentals endpoint
-fastify.get('/api/fundamentals/:symbol', async (request, reply) => {
+fastify.get('/api/fundamentals/:symbol', async (request) => {
   const { symbol } = request.params;
   
   return {
@@ -168,9 +168,7 @@ fastify.get('/api/fundamentals/:symbol', async (request, reply) => {
 });
 
 // News sentiment endpoint
-fastify.get('/api/news/:symbol', async (request, reply) => {
-  const { symbol } = request.params;
-  
+fastify.get('/api/news/:symbol', async () => {
   return {
     success: true,
     data: [],
@@ -185,7 +183,7 @@ fastify.get('/api/news/:symbol', async (request, reply) => {
 });
 
 // Circuit breaker status endpoint
-fastify.get('/api/status', async (request, reply) => {
+fastify.get('/api/status', async () => {
   return {
     circuitBreakers: circuitBreaker,
     uptime: process.uptime(),

@@ -281,6 +281,7 @@ type NewsState = {
 export default function Page() {
   const [symbol, setSymbol] = useState<string>("ITC.NS");
   const [symbolInput, setSymbolInput] = useState<string>("ITC.NS");
+  const [searchMessage, setSearchMessage] = useState<string | null>(null);
 
   const [{ price, provenance: quoteProv, error: quoteError }, setQuoteState] = useState<QuoteState>({
     price: null,
@@ -289,14 +290,14 @@ export default function Page() {
   });
   const [loadingQuote, setLoadingQuote] = useState<boolean>(true);
 
-  const [{ metrics, provenance: metricsProv, error: metricsError }, setMetricsState] = useState<MetricsState>({
+  const [{ metrics }, setMetricsState] = useState<MetricsState>({
     metrics: null,
     provenance: null,
     error: null,
   });
   const [loadingMetrics, setLoadingMetrics] = useState<boolean>(true);
 
-  const [{ items: news, provenance: newsProv, error: newsError }, setNewsState] = useState<NewsState>({
+  const [{ items: news, provenance: newsProv }, setNewsState] = useState<NewsState>({
     items: [],
     provenance: null,
     error: null,
@@ -389,8 +390,10 @@ export default function Page() {
   };
   const ticker = baseTicker ?? fallbackTicker;
   const displayName = ticker.name;
-  const effectivePrice = price?.price ?? ticker.price;
-  const effectiveChange = price?.daily_change_percent ?? ticker.changePct;
+  const hasLiveQuote = !!price;
+  const effectivePrice = hasLiveQuote ? price.price : null;
+  const effectiveChange = hasLiveQuote ? price.daily_change_percent : null;
+  const stockDataUnavailable = !loadingQuote && (!hasLiveQuote || !!quoteError);
   const lastUpdatedLabel = quoteProv?.lastUpdated
     ? relativeTime(new Date(quoteProv.lastUpdated))
     : "recently";
@@ -419,10 +422,35 @@ export default function Page() {
 
   const overallVerdict = getVerdict(overallScore);
 
-  function handleSearch(e: React.FormEvent<HTMLFormElement>) {
+  async function handleSearch(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!symbolInput) return;
-    setSymbol(symbolInput.toUpperCase());
+    if (!symbolInput.trim()) return;
+
+    setSearchMessage(null);
+
+    try {
+      const res = await fetch(`/api/nse/search?q=${encodeURIComponent(symbolInput.trim())}`);
+      const json: ApiResponse<string[]> = await res.json();
+
+      const candidates = json.data ?? [];
+      if (!json.success || candidates.length === 0) {
+        setSearchMessage(json.error ?? "Stock not found. Try company name or ticker.");
+        return;
+      }
+
+      if (candidates.length > 1) {
+        const topMatches = candidates.slice(0, 3).join(", ");
+        setSearchMessage(`Multiple matches found (${topMatches}). Please refine your search.`);
+        return;
+      }
+
+      const resolved = candidates[0];
+      setSymbol(resolved);
+      setSymbolInput(resolved);
+      setSearchMessage(null);
+    } catch {
+      setSearchMessage("Search unavailable right now. Please try again.");
+    }
   }
 
   return (
@@ -490,6 +518,7 @@ export default function Page() {
               Go
             </button>
           </form>
+          {searchMessage ? <p className="mt-2 text-xs text-stone-500">{searchMessage}</p> : null}
         </section>
 
         {/* Hero Summary - The Opinion */}
@@ -502,10 +531,16 @@ export default function Page() {
               <Skeleton className="h-8 w-32" />
             ) : (
               <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-light text-stone-600">₹{effectivePrice.toLocaleString("en-IN")}</span>
-                <span className={`text-sm font-medium ${effectiveChange >= 0 ? "text-teal-600" : "text-amber-600"}`}>
-                  {effectiveChange >= 0 ? "+" : ""}{effectiveChange.toFixed(2)}%
-                </span>
+                {stockDataUnavailable || effectivePrice === null || effectiveChange === null ? (
+                  <span className="text-sm font-medium text-stone-500">Data unavailable</span>
+                ) : (
+                  <>
+                    <span className="text-2xl font-light text-stone-600">₹{effectivePrice.toLocaleString("en-IN")}</span>
+                    <span className={`text-sm font-medium ${effectiveChange >= 0 ? "text-teal-600" : "text-amber-600"}`}>
+                      {effectiveChange >= 0 ? "+" : ""}{effectiveChange.toFixed(2)}%
+                    </span>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -603,14 +638,18 @@ export default function Page() {
                     {sentimentLabel === "positive" ? "Yes" : sentimentLabel === "negative" ? "No" : "Mixed"}
                   </span>
                 </div>
-                
+
+                {stockDataUnavailable || effectiveChange === null ? (
+                  <p className="mt-6 text-sm text-stone-400">Data unavailable</p>
+                ) : (
+                  <>
                     <p className={`mt-4 text-4xl font-semibold ${effectiveChange >= 1 ? "text-teal-600" : effectiveChange <= -1 ? "text-amber-600" : "text-stone-600"}`}>
                       {effectiveChange >= 0 ? "+" : ""}{effectiveChange.toFixed(2)}%
                     </p>
                     <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-stone-100">
                       <div className={`h-1.5 rounded-full transition-all ${VERDICT[verdict].bg}`} style={{ width: `${momentumScore}%` }} />
                     </div>
-                    
+
                     <div className="mt-5 space-y-2.5 border-t border-stone-100 pt-4">
                       <div className="flex justify-between text-sm">
                         <span className="text-stone-400">Today</span>
@@ -627,6 +666,8 @@ export default function Page() {
                         <span className="font-medium text-stone-700">{news.length}</span>
                       </div>
                     </div>
+                  </>
+                )}
               </div>
             );
           })()}

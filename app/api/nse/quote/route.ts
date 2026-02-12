@@ -33,23 +33,34 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(errorResponse, { status: 400 });
     }
 
-    const { price, provenance } = await fetchNSEQuote(symbol.toUpperCase());
+    const symbolUpper = symbol.toUpperCase();
+    const { price, provenance } = await fetchNSEQuote(symbolUpper);
 
-    const response: ApiResponse<StockPrice | null> = {
+    if (!price) {
+      const notFoundResponse: ApiResponse<null> = {
+        success: false,
+        data: null,
+        error: `Stock quote unavailable for symbol: ${symbolUpper}`,
+        timestamp: new Date(),
+        provenance,
+      };
+      return NextResponse.json(notFoundResponse, { status: 404 });
+    }
+
+    const response: ApiResponse<StockPrice> = {
       success: true,
       data: price,
-      error: price ? undefined : `Unable to fetch live quote for symbol: ${symbol}`,
       timestamp: new Date(),
       provenance,
     };
 
-    return NextResponse.json(response, { status: price ? 200 : 200 });
+    return NextResponse.json(response, { status: 200 });
   } catch (error) {
     const errorResponse: ApiResponse<null> = {
       success: false,
       error: error instanceof Error ? error.message : 'Internal server error',
       timestamp: new Date(),
     };
-    return NextResponse.json(errorResponse, { status: 200 });
+    return NextResponse.json(errorResponse, { status: 500 });
   }
 }

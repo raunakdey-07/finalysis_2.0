@@ -17,8 +17,9 @@ No jargon. No overwhelming data. Just clear verdicts for everyday investors.
 ## Features
 
 - **8 Popular Stocks** — ITC, TCS, Reliance, HDFC Bank, Infosys, Airtel, HUL, Asian Paints
-- **Search Any NSE Ticker** — Works with any listed company
+- **Human-Friendly Search** — Search by company name, alias, or ticker (e.g. `Bajaj Housing Finance`, `hdfc`, `ITC.NS`)
 - **Real-time Prices** — From NSE public endpoints (10min cache)
+- **Graceful Not-Found Handling** — Invalid stocks return clear “Data unavailable” state
 - **Fundamental Data** — Scraped from Screener.in (60-day cache)
 - **News Sentiment** — Google News RSS with keyword-based analysis
 - **Mobile Friendly** — Works on any device
@@ -45,6 +46,12 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000)
 
+To run frontend + backend helper server together:
+
+\`\`\`bash
+npm run dev:all
+\`\`\`
+
 ## API Endpoints
 
 | Endpoint | Description | Rate Limit |
@@ -52,7 +59,7 @@ Open [http://localhost:3000](http://localhost:3000)
 | \`/api/nse/quote?symbol=ITC\` | Live price | 60/min |
 | \`/api/metrics?symbol=ITC\` | Fundamentals + scores | 30/min |
 | \`/api/news?symbol=ITC\` | News with sentiment | 30/min |
-| \`/api/nse/search?q=hdfc\` | Search tickers | 20/min |
+| \`/api/nse/search?q=hdfc\` | Resolve human query to canonical tickers | 20/min |
 
 ## Data Sources
 

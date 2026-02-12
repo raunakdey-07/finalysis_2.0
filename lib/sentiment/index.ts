@@ -12,8 +12,6 @@ const IMPORTANCE_KEYWORDS = [
   'results', 'q1', 'q2', 'q3', 'q4', 'quarter', 'earnings', 'board meeting', 'filing', 'sebi', 'regulatory', 'acquisition', 'merger', 'm&a', 'capex', 'investment', 'order win', 'guidance'
 ];
 
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 function calculateSentiment(text: string): { sentiment: 'positive' | 'negative' | 'neutral'; score: number } {
   const lowerText = text.toLowerCase();
   let positiveCount = 0;

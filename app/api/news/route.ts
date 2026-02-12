@@ -58,6 +58,6 @@ export async function GET(request: NextRequest) {
       error: error instanceof Error ? error.message : 'Internal server error',
       timestamp: new Date(),
     };
-    return NextResponse.json(errorResponse, { status: 200 });
+    return NextResponse.json(errorResponse, { status: 500 });
   }
 }

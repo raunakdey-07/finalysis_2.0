@@ -91,10 +91,20 @@ export async function GET(request: NextRequest) {
     // Step 3: Fall back to live NSE search if local resolution found nothing
     const { symbols, provenance } = await searchStocks(query);
 
+    if (symbols.length === 0) {
+      const notFoundResponse: ApiResponse<string[]> = {
+        success: false,
+        data: [],
+        error: 'No matching stocks found for this query.',
+        timestamp: new Date(),
+        provenance,
+      };
+      return NextResponse.json(notFoundResponse, { status: 404 });
+    }
+
     const response: ApiResponse<string[]> = {
       success: true,
       data: symbols,
-      error: symbols.length === 0 ? 'No results from live search; check back later.' : undefined,
       timestamp: new Date(),
       provenance,
     };
@@ -106,6 +116,6 @@ export async function GET(request: NextRequest) {
       error: error instanceof Error ? error.message : 'Internal server error',
       timestamp: new Date(),
     };
-    return NextResponse.json(errorResponse, { status: 200 });
+    return NextResponse.json(errorResponse, { status: 500 });
   }
 }

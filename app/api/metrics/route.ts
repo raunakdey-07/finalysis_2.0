@@ -8,7 +8,7 @@ import { calculateMetrics, getRecommendation } from '@/lib/metrics';
 import { fetchNSEQuote } from '@/lib/nse';
 import { fetchFundamentals } from '@/lib/fundamentals';
 import { rateLimit, getClientId, RATE_LIMITS } from '@/lib/rate-limit';
-import { ApiResponse, Provenance, StockFundamentals, StockMetrics } from '@/types';
+import { ApiResponse, StockFundamentals, StockMetrics } from '@/types';
 
 /**
  * Get mock fundamental data for demonstration
@@ -54,26 +54,25 @@ export async function GET(request: NextRequest) {
     const { price, provenance: priceProvenance } = await fetchNSEQuote(symbolUpper);
     const { fundamentals, provenance: fundamentalsProvenance } = await fetchFundamentals(symbolUpper);
 
-    if (!fundamentals) {
+    if (!fundamentals || !price) {
       const response: ApiResponse<null> = {
-        success: true,
+        success: false,
         data: null,
-        error: `Unable to fetch fundamentals for ${symbol}.`,
+        error: `Metrics unavailable for ${symbolUpper}.`,
         timestamp: new Date(),
-        provenance: fundamentalsProvenance,
+        provenance: {
+          source: `${priceProvenance.source} + ${fundamentalsProvenance.source}`,
+          lastUpdated: priceProvenance.lastUpdated,
+          cacheTTL: `${priceProvenance.cacheTTL} / ${fundamentalsProvenance.cacheTTL}`,
+          cacheHit: priceProvenance.cacheHit || fundamentalsProvenance.cacheHit,
+          confidenceLevel: priceProvenance.confidenceLevel,
+          warnings: [
+            ...(priceProvenance.warnings || []),
+            ...(fundamentalsProvenance.warnings || []),
+          ],
+        },
       };
-      return NextResponse.json(response, { status: 200 });
-    }
-
-    if (!price) {
-      const response: ApiResponse<StockFundamentals> = {
-        success: true,
-        data: fundamentals,
-        error: `Unable to fetch live price for ${symbol}. Fundamentals served from cache.`,
-        timestamp: new Date(),
-        provenance: fundamentalsProvenance,
-      };
-      return NextResponse.json(response, { status: 200 });
+      return NextResponse.json(response, { status: 404 });
     }
 
     const metrics = calculateMetrics(fundamentals, price);
@@ -107,6 +106,6 @@ export async function GET(request: NextRequest) {
       error: error instanceof Error ? error.message : 'Internal server error',
       timestamp: new Date(),
     };
-    return NextResponse.json(errorResponse, { status: 200 });
+    return NextResponse.json(errorResponse, { status: 500 });
   }
 }

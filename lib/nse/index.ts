@@ -133,23 +133,30 @@ export async function fetchNSEQuote(symbol: string): Promise<QuoteResult> {
       return response.json();
     });
 
+    const lastPrice = data?.priceInfo?.lastPrice;
+    if (typeof lastPrice !== 'number' || !Number.isFinite(lastPrice) || lastPrice <= 0) {
+      throw new Error('quote-not-found');
+    }
+
+    const previousClose = data?.priceInfo?.previousClose;
+
     const stockPrice: StockPrice = {
       symbol,
-      price: data.priceInfo?.lastPrice ?? 0,
+      price: lastPrice,
       change: data.priceInfo?.change ?? 0,
       changePercent: data.priceInfo?.pChange ?? 0,
       volume: data.preOpenMarket?.totalTradedVolume ?? 0,
-      open: data.priceInfo?.open ?? data.priceInfo?.lastPrice ?? 0,
+      open: data.priceInfo?.open ?? lastPrice,
       high: data.priceInfo?.intraDayHighLow?.max ?? undefined,
       low: data.priceInfo?.intraDayHighLow?.min ?? undefined,
-      previousClose: data.priceInfo?.previousClose ?? undefined,
+      previousClose: previousClose ?? undefined,
       fiftyTwoWeekHigh: data.priceInfo?.weekHighLow?.max ?? undefined,
       fiftyTwoWeekLow: data.priceInfo?.weekHighLow?.min ?? undefined,
       timestamp: new Date(),
       // Backend canonical: daily_change_percent = ((current_price - previous_close) / previous_close) * 100
       daily_change_percent: 
-        data.priceInfo?.previousClose && data.priceInfo?.previousClose > 0
-          ? ((data.priceInfo.lastPrice - data.priceInfo.previousClose) / data.priceInfo.previousClose) * 100
+        previousClose && previousClose > 0
+          ? ((lastPrice - previousClose) / previousClose) * 100
           : 0,
     };
 

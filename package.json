@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "next dev",
     "dev:api": "node backend/server.js",
-    "dev:all": "concurrently \"pnpm dev\" \"pnpm dev:api\"",
+    "dev:all": "concurrently \"npm run dev\" \"npm run dev:api\"",
     "build": "next build",
     "build:api": "echo 'Backend requires no build'",
     "start": "next start",

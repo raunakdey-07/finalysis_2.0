@@ -112,16 +112,20 @@ function calculateMomentumScore(price: StockPrice): { score: number; explanation
   let score = 50;
   const factors: string[] = [];
 
-  if (price.changePercent > 5) {
+  const dailyChangePercent = typeof price.daily_change_percent === 'number'
+    ? price.daily_change_percent
+    : price.changePercent;
+
+  if (dailyChangePercent > 5) {
     score += 25;
     factors.push('Strong positive momentum with significant price increase');
-  } else if (price.changePercent > 0) {
+  } else if (dailyChangePercent > 0) {
     score += 10;
     factors.push('Positive price momentum');
-  } else if (price.changePercent < -5) {
+  } else if (dailyChangePercent < -5) {
     score -= 25;
     factors.push('Negative momentum with significant price decline');
-  } else if (price.changePercent < 0) {
+  } else if (dailyChangePercent < 0) {
     score -= 10;
     factors.push('Slight negative price momentum');
   } else {
