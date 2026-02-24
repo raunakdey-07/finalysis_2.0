@@ -13,6 +13,14 @@ export interface SymbolEntry {
   aliases: string[];
 }
 
+type NormalizedSymbolEntry = {
+  symbol: string;
+  name: string;
+  normalizedName: string;
+  normalizedAliases: string[];
+  normalizedSymbol: string;
+};
+
 /**
  * Normalize input string for matching
  * - Lowercase
@@ -56,6 +64,16 @@ export interface ResolutionResult {
   }>;
 }
 
+const symbols = symbolsIndex as SymbolEntry[];
+
+const normalizedEntries: NormalizedSymbolEntry[] = symbols.map((entry) => ({
+  symbol: entry.symbol,
+  name: entry.name,
+  normalizedName: normalize(entry.name),
+  normalizedAliases: entry.aliases.map(normalize),
+  normalizedSymbol: normalize(entry.symbol),
+}));
+
 /**
  * Resolve human input to NSE symbol(s)
  * 
@@ -78,12 +96,10 @@ export function resolveSymbol(query: string): ResolutionResult {
   }
 
   const normalized = normalize(query);
-  const symbols = symbolsIndex as SymbolEntry[];
 
   // 1. Exact alias match
-  for (const entry of symbols) {
-    const normalizedAliases = entry.aliases.map(normalize);
-    if (normalizedAliases.includes(normalized)) {
+  for (const entry of normalizedEntries) {
+    if (entry.normalizedAliases.includes(normalized)) {
       return {
         type: 'exact',
         symbol: entry.symbol,
@@ -94,8 +110,8 @@ export function resolveSymbol(query: string): ResolutionResult {
   }
 
   // 2. Exact name match
-  for (const entry of symbols) {
-    if (normalize(entry.name) === normalized) {
+  for (const entry of normalizedEntries) {
+    if (entry.normalizedName === normalized) {
       return {
         type: 'exact',
         symbol: entry.symbol,
@@ -106,8 +122,8 @@ export function resolveSymbol(query: string): ResolutionResult {
   }
 
   // 3. Partial name match (starts with)
-  const partialMatches = symbols.filter(entry =>
-    normalize(entry.name).startsWith(normalized)
+  const partialMatches = normalizedEntries.filter(entry =>
+    entry.normalizedName.startsWith(normalized)
   );
 
   if (partialMatches.length === 1) {
@@ -128,11 +144,11 @@ export function resolveSymbol(query: string): ResolutionResult {
   }
 
   // 4. Token overlap scoring
-  const scores = symbols.map(entry => ({
+  const scores = normalizedEntries.map(entry => ({
     entry,
     score: Math.max(
-      tokenOverlapScore(normalized, normalize(entry.name)),
-      Math.max(...entry.aliases.map(alias => tokenOverlapScore(normalized, normalize(alias))))
+      tokenOverlapScore(normalized, entry.normalizedName),
+      Math.max(...entry.normalizedAliases.map(alias => tokenOverlapScore(normalized, alias)))
     ),
   }));
 
@@ -149,8 +165,12 @@ export function resolveSymbol(query: string): ResolutionResult {
   // Sort by score descending
   meaningful.sort((a, b) => b.score - a.score);
 
-  // If top candidate significantly better than others (2x score), return as confident
-  if (meaningful.length >= 2 && meaningful[0].score >= meaningful[1].score * 1.5) {
+  // If top candidate is clearly better and sufficiently strong, return as confident
+  if (
+    meaningful.length >= 2 &&
+    meaningful[0].score >= 0.6 &&
+    meaningful[0].score >= meaningful[1].score * 1.5
+  ) {
     return {
       type: 'confident',
       symbol: meaningful[0].entry.symbol,
@@ -190,12 +210,10 @@ export function extractSymbol(input: string): string | null {
   if (!input || input.trim().length === 0) return null;
 
   const normalized = normalize(input);
-  const symbols = symbolsIndex as SymbolEntry[];
 
   // Direct symbol match (case-insensitive)
-  for (const entry of symbols) {
-    const symbolNormalized = normalize(entry.symbol);
-    if (symbolNormalized === normalized) {
+  for (const entry of normalizedEntries) {
+    if (entry.normalizedSymbol === normalized) {
       return entry.symbol;
     }
   }

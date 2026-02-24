@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
   
   if (!rateLimitResult.success) {
     return NextResponse.json(
-      { success: false, error: `Rate limit exceeded. Try again in ${rateLimitResult.resetIn}s.`, timestamp: new Date() },
+      { success: false, error: `Rate limit exceeded. Try again in ${rateLimitResult.resetIn}s.`, errorCode: 'RATE_LIMITED', timestamp: new Date() },
       { status: 429, headers: { 'Retry-After': String(rateLimitResult.resetIn) } }
     );
   }
@@ -43,6 +43,7 @@ export async function GET(request: NextRequest) {
       const errorResponse: ApiResponse<null> = {
         success: false,
         error: 'Symbol parameter is required',
+        errorCode: 'VALIDATION_ERROR',
         timestamp: new Date(),
       };
       return NextResponse.json(errorResponse, { status: 400 });
@@ -59,6 +60,7 @@ export async function GET(request: NextRequest) {
         success: false,
         data: null,
         error: `Metrics unavailable for ${symbolUpper}.`,
+        errorCode: 'METRICS_UNAVAILABLE',
         timestamp: new Date(),
         provenance: {
           source: `${priceProvenance.source} + ${fundamentalsProvenance.source}`,
@@ -104,6 +106,7 @@ export async function GET(request: NextRequest) {
     const errorResponse: ApiResponse<null> = {
       success: false,
       error: error instanceof Error ? error.message : 'Internal server error',
+      errorCode: 'INTERNAL_ERROR',
       timestamp: new Date(),
     };
     return NextResponse.json(errorResponse, { status: 500 });

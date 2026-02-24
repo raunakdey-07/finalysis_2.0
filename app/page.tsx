@@ -434,7 +434,13 @@ export default function Page() {
 
       const candidates = json.data ?? [];
       if (!json.success || candidates.length === 0) {
-        setSearchMessage(json.error ?? "Stock not found. Try company name or ticker.");
+        if (json.errorCode === "QUERY_TOO_SHORT") {
+          setSearchMessage("Please type at least 2 characters.");
+        } else if (json.errorCode === "RATE_LIMITED") {
+          setSearchMessage("Too many searches. Please wait and try again.");
+        } else {
+          setSearchMessage(json.error ?? "Stock not found. Try company name or ticker.");
+        }
         return;
       }
 
@@ -447,7 +453,7 @@ export default function Page() {
       const resolved = candidates[0];
       setSymbol(resolved);
       setSymbolInput(resolved);
-      setSearchMessage(null);
+      setSearchMessage(json.message ?? null);
     } catch {
       setSearchMessage("Search unavailable right now. Please try again.");
     }
@@ -485,6 +491,7 @@ export default function Page() {
                   onClick={() => {
                     setSymbol(key);
                     setSymbolInput(key);
+                    setSearchMessage(null);
                   }}
                   className={`flex items-center justify-between rounded-lg border bg-white px-3 py-2.5 text-left transition ${
                     isSelected 

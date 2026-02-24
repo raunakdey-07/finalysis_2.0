@@ -11,7 +11,8 @@
     "build:api": "echo 'Backend requires no build'",
     "start": "next start",
     "start:api": "node backend/server.js",
-    "lint": "eslint"
+    "lint": "eslint",
+    "symbols:validate": "node scripts/validate-symbol-index.mjs"
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",
