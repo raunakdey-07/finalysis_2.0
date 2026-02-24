@@ -37,7 +37,12 @@ export async function GET(request: NextRequest) {
         timestamp: new Date(),
         provenance: sentiment.provenance,
       };
-      return NextResponse.json(response, { status: 200 });
+      return NextResponse.json(response, {
+        status: 200,
+        headers: {
+          'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=1800',
+        },
+      });
     }
 
     const { items, provenance } = symbol
@@ -52,7 +57,12 @@ export async function GET(request: NextRequest) {
       provenance,
     };
 
-    return NextResponse.json(response, { status: 200 });
+    return NextResponse.json(response, {
+      status: 200,
+      headers: {
+        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=1800',
+      },
+    });
   } catch (error) {
     const errorResponse: ApiResponse<null> = {
       success: false,

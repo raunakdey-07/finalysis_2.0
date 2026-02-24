@@ -101,7 +101,12 @@ export async function GET(request: NextRequest) {
       },
     };
 
-    return NextResponse.json(response, { status: 200 });
+    return NextResponse.json(response, {
+      status: 200,
+      headers: {
+        'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=600',
+      },
+    });
   } catch (error) {
     const errorResponse: ApiResponse<null> = {
       success: false,

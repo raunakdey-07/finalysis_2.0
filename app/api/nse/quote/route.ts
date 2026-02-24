@@ -67,7 +67,12 @@ export async function GET(request: NextRequest) {
       provenance,
     };
 
-    return NextResponse.json(response, { status: 200 });
+    return NextResponse.json(response, {
+      status: 200,
+      headers: {
+        'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=120',
+      },
+    });
   } catch (error) {
     const errorResponse: ApiResponse<null> = {
       success: false,

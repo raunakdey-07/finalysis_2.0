@@ -311,86 +311,85 @@ export default function Page() {
   const [loadingNews, setLoadingNews] = useState<boolean>(true);
   const [blendedSentiment, setBlendedSentiment] = useState<BlendedSentimentState | null>(null);
 
-  // Fetch quote, metrics, and news whenever symbol changes.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const urlSymbol = url.searchParams.get("symbol");
+    if (!urlSymbol) return;
+
+    const normalized = urlSymbol.toUpperCase().trim().replace(/\.NS$/i, "") + ".NS";
+    if (!/^[A-Z0-9&\-.]+\.NS$/.test(normalized)) return;
+
+    setSymbol(normalized);
+    setSymbolInput(normalized);
+  }, []);
+
+  // Fetch quote, metrics, news, and sentiment in a single request whenever symbol changes.
   useEffect(() => {
     let cancelled = false;
 
     // Clean symbol for API - remove .NS suffix if present
     const apiSymbol = symbol.replace(/\.NS$/i, "");
 
-    async function loadQuote() {
+    async function loadOverview() {
       setLoadingQuote(true);
-      try {
-        const res = await fetch(`/api/nse/quote?symbol=${encodeURIComponent(apiSymbol)}`);
-        const json: ApiResponse<StockPrice | null> = await res.json();
-        if (cancelled) return;
-        setQuoteState({
-          price: json.data ?? null,
-          provenance: json.provenance ?? null,
-          error: json.success ? json.error ?? null : json.error ?? "Unable to fetch price",
-        });
-      } catch (err) {
-        if (cancelled) return;
-        setQuoteState({ price: null, provenance: null, error: err instanceof Error ? err.message : "Unable to fetch price" });
-      } finally {
-        if (!cancelled) setLoadingQuote(false);
-      }
-    }
-
-    async function loadMetrics() {
       setLoadingMetrics(true);
-      try {
-        const res = await fetch(`/api/metrics?symbol=${encodeURIComponent(apiSymbol)}`);
-        const json: ApiResponse<MetricsBundle | null> = await res.json();
-        if (cancelled) return;
-        setMetricsState({
-          metrics: json.data ?? null,
-          provenance: json.provenance ?? null,
-          error: json.success ? json.error ?? null : json.error ?? "Unable to fetch metrics",
-        });
-      } catch (err) {
-        if (cancelled) return;
-        setMetricsState({ metrics: null, provenance: null, error: err instanceof Error ? err.message : "Unable to fetch metrics" });
-      } finally {
-        if (!cancelled) setLoadingMetrics(false);
-      }
-    }
-
-    async function loadNews() {
       setLoadingNews(true);
+
       try {
-        const res = await fetch(`/api/news?symbol=${encodeURIComponent(apiSymbol)}&limit=6`);
-        const json: ApiResponse<NewsItem[]> = await res.json();
+        const res = await fetch(`/api/overview?symbol=${encodeURIComponent(apiSymbol)}&limit=6`);
+        const json: ApiResponse<{
+          quote: { data: StockPrice | null; error?: string };
+          metrics: { data: MetricsBundle | null; error?: string };
+          news: { data: NewsItem[]; error?: string };
+          blendedSentiment: BlendedSentimentState | null;
+        }> = await res.json();
+
         if (cancelled) return;
-        setNewsState({
-          items: json.data ?? [],
+
+        if (!json.success || !json.data) {
+          setQuoteState({ price: null, provenance: json.provenance ?? null, error: json.error ?? "Unable to fetch price" });
+          setMetricsState({ metrics: null, provenance: json.provenance ?? null, error: json.error ?? "Unable to fetch metrics" });
+          setNewsState({ items: [], provenance: json.provenance ?? null, error: json.error ?? "Unable to fetch news" });
+          setBlendedSentiment(null);
+          return;
+        }
+
+        setQuoteState({
+          price: json.data.quote.data ?? null,
           provenance: json.provenance ?? null,
-          error: json.success ? json.error ?? null : json.error ?? "Unable to fetch news",
+          error: json.data.quote.error ?? null,
         });
+
+        setMetricsState({
+          metrics: json.data.metrics.data ?? null,
+          provenance: json.provenance ?? null,
+          error: json.data.metrics.error ?? null,
+        });
+
+        setNewsState({
+          items: json.data.news.data ?? [],
+          provenance: json.provenance ?? null,
+          error: json.data.news.error ?? null,
+        });
+
+        setBlendedSentiment(json.data.blendedSentiment ?? null);
       } catch (err) {
         if (cancelled) return;
-        setNewsState({ items: [], provenance: null, error: err instanceof Error ? err.message : "Unable to fetch news" });
-      } finally {
-        if (!cancelled) setLoadingNews(false);
-      }
-    }
-
-    async function loadBlendedSentiment() {
-      try {
-        const res = await fetch(`/api/news?type=sentiment&symbol=${encodeURIComponent(apiSymbol)}`);
-        const json: ApiResponse<BlendedSentimentState> = await res.json();
-        if (cancelled) return;
-        setBlendedSentiment(json.success ? json.data ?? null : null);
-      } catch {
-        if (cancelled) return;
+        const fallbackError = err instanceof Error ? err.message : "Unable to fetch overview";
+        setQuoteState({ price: null, provenance: null, error: fallbackError });
+        setMetricsState({ metrics: null, provenance: null, error: fallbackError });
+        setNewsState({ items: [], provenance: null, error: fallbackError });
         setBlendedSentiment(null);
+      } finally {
+        if (!cancelled) {
+          setLoadingQuote(false);
+          setLoadingMetrics(false);
+          setLoadingNews(false);
+        }
       }
     }
 
-    loadQuote();
-    loadMetrics();
-    loadNews();
-    loadBlendedSentiment();
+    loadOverview();
 
     return () => {
       cancelled = true;
@@ -553,6 +552,10 @@ export default function Page() {
       setSymbol(resolved);
       setSymbolInput(resolved);
       setSearchMessage(json.message ?? null);
+
+      const url = new URL(window.location.href);
+      url.searchParams.set("symbol", resolved);
+      window.history.replaceState({}, "", url.toString());
     } catch {
       setSearchMessage("Search unavailable right now. Please try again.");
     }
@@ -591,6 +594,10 @@ export default function Page() {
                     setSymbol(key);
                     setSymbolInput(key);
                     setSearchMessage(null);
+
+                    const url = new URL(window.location.href);
+                    url.searchParams.set("symbol", key);
+                    window.history.replaceState({}, "", url.toString());
                   }}
                   className={`flex items-center justify-between rounded-lg border bg-white px-3 py-2.5 text-left transition ${
                     isSelected 
