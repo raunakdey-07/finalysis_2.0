@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchNews, getStockNews, getMarketSentiment } from '@/lib/sentiment';
+import { fetchNews, getStockNews, getSentimentMix } from '@/lib/sentiment';
 import { rateLimit, getClientId, RATE_LIMITS } from '@/lib/rate-limit';
 import { ApiResponse, NewsItem } from '@/types';
 
@@ -29,10 +29,11 @@ export async function GET(request: NextRequest) {
     const limit = limitParam ? parseInt(limitParam, 10) : 20;
 
     if (type === 'sentiment') {
-      const sentiment = await getMarketSentiment();
+      const sentiment = await getSentimentMix(symbol?.toUpperCase());
       const response: ApiResponse<typeof sentiment> = {
         success: true,
         data: sentiment,
+        message: symbol ? `Blended sentiment for ${symbol.toUpperCase()} computed.` : 'Market sentiment computed.',
         timestamp: new Date(),
         provenance: sentiment.provenance,
       };

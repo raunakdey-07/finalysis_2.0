@@ -12,6 +12,117 @@ const IMPORTANCE_KEYWORDS = [
   'results', 'q1', 'q2', 'q3', 'q4', 'quarter', 'earnings', 'board meeting', 'filing', 'sebi', 'regulatory', 'acquisition', 'merger', 'm&a', 'capex', 'investment', 'order win', 'guidance'
 ];
 
+type SentimentLabel = 'positive' | 'negative' | 'neutral';
+
+type SentimentSnapshot = {
+  sentiment: SentimentLabel;
+  score: number;
+  newsCount: number;
+};
+
+type SectorConfig = {
+  key: string;
+  displayName: string;
+  query: string;
+  keywords: string[];
+};
+
+const DEFAULT_SECTOR: SectorConfig = {
+  key: 'broad-market',
+  displayName: 'Broad Market',
+  query: 'indian stock market nse bse sector outlook',
+  keywords: ['market', 'nse', 'bse', 'equity', 'stocks'],
+};
+
+const SECTOR_CONFIGS: SectorConfig[] = [
+  {
+    key: 'banking-financials',
+    displayName: 'Banking & Financials',
+    query: 'india banking financial services nse outlook',
+    keywords: ['bank', 'lender', 'nbfc', 'insurance', 'financial', 'credit'],
+  },
+  {
+    key: 'information-technology',
+    displayName: 'Information Technology',
+    query: 'india information technology it services nse outlook',
+    keywords: ['software', 'it services', 'technology', 'digital', 'ai', 'cloud'],
+  },
+  {
+    key: 'pharma-healthcare',
+    displayName: 'Pharma & Healthcare',
+    query: 'india pharma healthcare hospitals nse outlook',
+    keywords: ['pharma', 'drug', 'healthcare', 'hospital', 'biotech'],
+  },
+  {
+    key: 'auto-ancillaries',
+    displayName: 'Auto & Ancillaries',
+    query: 'india auto automobile ev nse outlook',
+    keywords: ['auto', 'automobile', 'ev', 'vehicle', 'two-wheeler', 'car'],
+  },
+  {
+    key: 'energy-utilities',
+    displayName: 'Energy & Utilities',
+    query: 'india energy power utilities oil gas nse outlook',
+    keywords: ['energy', 'power', 'utility', 'oil', 'gas', 'renewable'],
+  },
+  {
+    key: 'metals-mining',
+    displayName: 'Metals & Mining',
+    query: 'india metals mining steel aluminium nse outlook',
+    keywords: ['steel', 'metal', 'mining', 'aluminium', 'ore'],
+  },
+  {
+    key: 'fmcg-consumer',
+    displayName: 'FMCG & Consumer',
+    query: 'india fmcg consumer staples discretionary nse outlook',
+    keywords: ['fmcg', 'consumer', 'retail', 'beverage', 'foods'],
+  },
+  {
+    key: 'infrastructure-capital-goods',
+    displayName: 'Infrastructure & Capital Goods',
+    query: 'india infrastructure capital goods engineering nse outlook',
+    keywords: ['infrastructure', 'capital goods', 'engineering', 'construction', 'projects'],
+  },
+];
+
+const SYMBOL_SECTOR_HINTS: Record<string, string> = {
+  HDFCBANK: 'banking-financials',
+  ICICIBANK: 'banking-financials',
+  SBIN: 'banking-financials',
+  AXISBANK: 'banking-financials',
+  KOTAKBANK: 'banking-financials',
+  TCS: 'information-technology',
+  INFY: 'information-technology',
+  HCLTECH: 'information-technology',
+  WIPRO: 'information-technology',
+  TECHM: 'information-technology',
+  SUNPHARMA: 'pharma-healthcare',
+  DRREDDY: 'pharma-healthcare',
+  CIPLA: 'pharma-healthcare',
+  APOLLOHOSP: 'pharma-healthcare',
+  LUPIN: 'pharma-healthcare',
+  TATAMOTORS: 'auto-ancillaries',
+  MARUTI: 'auto-ancillaries',
+  BAJAJAUTO: 'auto-ancillaries',
+  HEROMOTOCO: 'auto-ancillaries',
+  RELIANCE: 'energy-utilities',
+  NTPC: 'energy-utilities',
+  POWERGRID: 'energy-utilities',
+  ADANIGREEN: 'energy-utilities',
+  ONGC: 'energy-utilities',
+  JSWSTEEL: 'metals-mining',
+  TATASTEEL: 'metals-mining',
+  HINDALCO: 'metals-mining',
+  COALINDIA: 'metals-mining',
+  ITC: 'fmcg-consumer',
+  HINDUNILVR: 'fmcg-consumer',
+  NESTLEIND: 'fmcg-consumer',
+  BRITANNIA: 'fmcg-consumer',
+  LT: 'infrastructure-capital-goods',
+  SIEMENS: 'infrastructure-capital-goods',
+  BHEL: 'infrastructure-capital-goods',
+};
+
 function calculateSentiment(text: string): { sentiment: 'positive' | 'negative' | 'neutral'; score: number } {
   const lowerText = text.toLowerCase();
   let positiveCount = 0;
@@ -212,6 +323,111 @@ export interface NewsResult {
   provenance: Provenance;
 }
 
+export interface SentimentMixResult {
+  market: SentimentSnapshot;
+  sector: (SentimentSnapshot & { name: string; key: string }) | null;
+  company: (SentimentSnapshot & { symbol: string }) | null;
+  provenance: Provenance;
+}
+
+function aggregateSentiment(items: NewsItem[]): SentimentSnapshot {
+  if (items.length === 0) {
+    return { sentiment: 'neutral', score: 0, newsCount: 0 };
+  }
+
+  const totalScore = items.reduce((sum, item) => sum + (item.sentimentScore || 0), 0);
+  const avgScore = totalScore / items.length;
+
+  let sentiment: SentimentLabel = 'neutral';
+  if (avgScore > 0.1) sentiment = 'positive';
+  else if (avgScore < -0.1) sentiment = 'negative';
+
+  return {
+    sentiment,
+    score: avgScore,
+    newsCount: items.length,
+  };
+}
+
+function inferSectorConfig(symbol: string, companyItems: NewsItem[]): SectorConfig {
+  const symbolKey = symbol.replace(/\.NS$/i, '').toUpperCase();
+  const hintedSector = SYMBOL_SECTOR_HINTS[symbolKey];
+  if (hintedSector) {
+    const config = SECTOR_CONFIGS.find((sector) => sector.key === hintedSector);
+    if (config) return config;
+  }
+
+  const corpus = companyItems
+    .slice(0, 25)
+    .map((item) => `${item.title} ${item.description}`.toLowerCase())
+    .join(' ');
+
+  let bestConfig: SectorConfig | null = null;
+  let bestScore = 0;
+
+  for (const config of SECTOR_CONFIGS) {
+    const score = config.keywords.reduce((acc, keyword) => {
+      return acc + (corpus.includes(keyword.toLowerCase()) ? 1 : 0);
+    }, 0);
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestConfig = config;
+    }
+  }
+
+  return bestConfig ?? DEFAULT_SECTOR;
+}
+
+async function fetchTopicNews(cacheKey: string, query: string, limit: number): Promise<NewsResult> {
+  const cached = cache.getEntry<NewsItem[]>(cacheKey);
+  if (cached) {
+    return {
+      items: sortAndLimit(cached.data, limit),
+      provenance: buildProvenance({
+        source: 'Google News RSS (cached)',
+        cacheHit: true,
+        cacheTTL: '8h',
+        lastUpdated: new Date(cached.timestamp),
+        confidence: 'medium',
+      }),
+    };
+  }
+
+  let aggregated: NewsItem[] = [];
+  const warnings: string[] = [];
+
+  try {
+    aggregated = await fetchGoogleNews(query);
+  } catch (err) {
+    warnings.push(err instanceof Error ? err.message : 'Google News RSS failed');
+  }
+
+  if (aggregated.length === 0) {
+    try {
+      aggregated = await fetchGNews(query);
+    } catch (err) {
+      warnings.push(err instanceof Error ? err.message : 'GNews fallback failed');
+    }
+  }
+
+  if (aggregated.length > 0) {
+    cache.set(cacheKey, aggregated, NEWS_TTL_MS);
+  }
+
+  return {
+    items: sortAndLimit(aggregated, limit),
+    provenance: buildProvenance({
+      source: aggregated.length > 0 ? 'Google News RSS' : 'Google News RSS + GNews (empty)',
+      cacheHit: false,
+      cacheTTL: '8h',
+      lastUpdated: new Date(),
+      confidence: aggregated.length > 0 ? 'high' : 'derived',
+      warnings: warnings.length ? warnings : undefined,
+    }),
+  };
+}
+
 export async function fetchNews(limit: number = 20): Promise<NewsResult> {
   const cacheKey = 'news_all';
   const cached = cache.getEntry<NewsItem[]>(cacheKey);
@@ -315,22 +531,70 @@ export async function getStockNews(symbol: string, limit: number = 10): Promise<
 
 export async function getMarketSentiment(): Promise<{ sentiment: string; score: number; newsCount: number; provenance: Provenance }> {
   const { items, provenance } = await fetchNews(50);
-
-  if (items.length === 0) {
-    return { sentiment: 'neutral', score: 0, newsCount: 0, provenance };
-  }
-
-  const totalScore = items.reduce((sum, item) => sum + (item.sentimentScore || 0), 0);
-  const avgScore = totalScore / items.length;
-
-  let sentiment = 'neutral';
-  if (avgScore > 0.1) sentiment = 'positive';
-  else if (avgScore < -0.1) sentiment = 'negative';
+  const snapshot = aggregateSentiment(items);
 
   return {
-    sentiment,
-    score: avgScore,
-    newsCount: items.length,
+    sentiment: snapshot.sentiment,
+    score: snapshot.score,
+    newsCount: snapshot.newsCount,
     provenance,
+  };
+}
+
+export async function getSentimentMix(symbol?: string): Promise<SentimentMixResult> {
+  const marketResult = await fetchNews(50);
+  const market = aggregateSentiment(marketResult.items);
+
+  if (!symbol) {
+    return {
+      market,
+      sector: null,
+      company: null,
+      provenance: marketResult.provenance,
+    };
+  }
+
+  const normalizedSymbol = symbol.replace(/\.NS$/i, '').toUpperCase();
+  const companyResult = await getStockNews(normalizedSymbol, 30);
+  const companySnapshot = aggregateSentiment(companyResult.items);
+
+  const sectorConfig = inferSectorConfig(normalizedSymbol, companyResult.items);
+  const sectorResult = await fetchTopicNews(`news_sector_${sectorConfig.key}`, sectorConfig.query, 30);
+  const sectorSnapshot = aggregateSentiment(sectorResult.items);
+
+  const warnings = [
+    ...(marketResult.provenance.warnings || []),
+    ...(companyResult.provenance.warnings || []),
+    ...(sectorResult.provenance.warnings || []),
+  ];
+
+  return {
+    market,
+    sector: {
+      ...sectorSnapshot,
+      name: sectorConfig.displayName,
+      key: sectorConfig.key,
+    },
+    company: {
+      ...companySnapshot,
+      symbol: normalizedSymbol,
+    },
+    provenance: buildProvenance({
+      source: 'Google News RSS blended sentiment (market + sector + company)',
+      cacheHit: Boolean(
+        marketResult.provenance.cacheHit &&
+        companyResult.provenance.cacheHit &&
+        sectorResult.provenance.cacheHit
+      ),
+      cacheTTL: '8h',
+      lastUpdated: new Date(),
+      confidence:
+        companySnapshot.newsCount >= 5 && sectorSnapshot.newsCount >= 5
+          ? 'high'
+          : companySnapshot.newsCount > 0 || sectorSnapshot.newsCount > 0
+            ? 'medium'
+            : 'derived',
+      warnings: warnings.length ? warnings : undefined,
+    }),
   };
 }

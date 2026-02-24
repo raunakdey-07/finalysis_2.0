@@ -278,6 +278,12 @@ type NewsState = {
   error: string | null;
 };
 
+type BlendedSentimentState = {
+  market: { sentiment: string; score: number; newsCount: number };
+  sector: { name: string; key: string; sentiment: string; score: number; newsCount: number } | null;
+  company: { symbol: string; sentiment: string; score: number; newsCount: number } | null;
+};
+
 export default function Page() {
   const [symbol, setSymbol] = useState<string>("ITC.NS");
   const [symbolInput, setSymbolInput] = useState<string>("ITC.NS");
@@ -303,6 +309,7 @@ export default function Page() {
     error: null,
   });
   const [loadingNews, setLoadingNews] = useState<boolean>(true);
+  const [blendedSentiment, setBlendedSentiment] = useState<BlendedSentimentState | null>(null);
 
   // Fetch quote, metrics, and news whenever symbol changes.
   useEffect(() => {
@@ -368,9 +375,22 @@ export default function Page() {
       }
     }
 
+    async function loadBlendedSentiment() {
+      try {
+        const res = await fetch(`/api/news?type=sentiment&symbol=${encodeURIComponent(apiSymbol)}`);
+        const json: ApiResponse<BlendedSentimentState> = await res.json();
+        if (cancelled) return;
+        setBlendedSentiment(json.success ? json.data ?? null : null);
+      } catch {
+        if (cancelled) return;
+        setBlendedSentiment(null);
+      }
+    }
+
     loadQuote();
     loadMetrics();
     loadNews();
+    loadBlendedSentiment();
 
     return () => {
       cancelled = true;
@@ -408,7 +428,17 @@ export default function Page() {
     return total / news.length;
   }, [news]);
 
-  const sentimentLabel = avgNewsSentiment > 0.15 ? "positive" : avgNewsSentiment < -0.15 ? "negative" : "neutral";
+  const effectiveSentimentScore = useMemo(() => {
+    if (!blendedSentiment) return avgNewsSentiment;
+
+    const market = blendedSentiment.market?.score ?? 0;
+    const sector = blendedSentiment.sector?.score ?? 0;
+    const company = blendedSentiment.company?.score ?? avgNewsSentiment;
+
+    return (company * 0.5) + (sector * 0.3) + (market * 0.2);
+  }, [blendedSentiment, avgNewsSentiment]);
+
+  const sentimentLabel = effectiveSentimentScore > 0.15 ? "positive" : effectiveSentimentScore < -0.15 ? "negative" : "neutral";
 
   // Compute overall conviction for hero summary
   const overallScore = useMemo(() => {
