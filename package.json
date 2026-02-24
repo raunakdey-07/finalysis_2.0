@@ -12,7 +12,8 @@
     "start": "next start",
     "start:api": "node backend/server.js",
     "lint": "eslint",
-    "symbols:validate": "node scripts/validate-symbol-index.mjs"
+    "symbols:validate": "node scripts/validate-symbol-index.mjs",
+    "symbols:sync": "node scripts/sync-nse-symbols.mjs"
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",

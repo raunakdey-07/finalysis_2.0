@@ -46,6 +46,12 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000)
 
+Set your canonical site URL (recommended for SEO routes):
+
+```bash
+echo "NEXT_PUBLIC_SITE_URL=https://your-domain.com" > .env.local
+```
+
 To run frontend + backend helper server together:
 
 \`\`\`bash
@@ -59,6 +65,7 @@ npm run dev:all
 | \`/api/nse/quote?symbol=ITC\` | Live price | 60/min |
 | \`/api/metrics?symbol=ITC\` | Fundamentals + scores | 30/min |
 | \`/api/news?symbol=ITC\` | News with sentiment | 30/min |
+| `/api/overview?symbol=ITC` | Aggregated payload (quote + metrics + news + sentiment) | 30/min |
 | \`/api/nse/search?q=hdfc\` | Resolve human query to canonical tickers | 20/min |
 
 ## Data Sources
@@ -68,6 +75,22 @@ npm run dev:all
 | NSE public endpoints | Live prices, change % | 10 minutes |
 | Screener.in (scraped) | P/E, P/B, ROE, ROCE, etc. | 60 days |
 | Google News RSS | Headlines, sentiment | 8 hours |
+
+## Maintenance
+
+Refresh the local NSE symbol index (merged with existing aliases):
+
+```bash
+npm run symbols:sync
+npm run symbols:validate
+```
+
+Pre-freeze quality checks:
+
+```bash
+npm run lint
+npm run build
+```
 
 ## Disclaimer
 
