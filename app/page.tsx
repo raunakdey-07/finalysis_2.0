@@ -452,6 +452,75 @@ export default function Page() {
 
   const overallVerdict = getVerdict(overallScore);
 
+  const verdictBreakdown = useMemo(() => {
+    const concerns: string[] = [];
+    const strengths: string[] = [];
+    const nextSteps: string[] = [];
+
+    if (!metrics) {
+      return { concerns, strengths, nextSteps, modelNote: "" };
+    }
+
+    const fundamentals = metrics.fundamentals;
+
+    if (metrics.valuationScore <= 40) {
+      concerns.push("Valuation score is weak, indicating a demanding entry price versus current fundamentals.");
+      nextSteps.push("Compare valuation with 2-3 direct sector peers before taking a call.");
+    } else if (metrics.valuationScore >= 65) {
+      strengths.push("Valuation score is supportive, with pricing closer to our fair-value bands.");
+    }
+
+    if (metrics.profitabilityScore <= 40) {
+      concerns.push("Business quality score is weak (returns/leverage profile needs closer scrutiny).");
+      nextSteps.push("Review the last 3 annual reports for debt trend, ROE quality, and cash-flow consistency.");
+    } else if (metrics.profitabilityScore >= 65) {
+      strengths.push("Business quality score is strong with healthier profitability signals.");
+    }
+
+    if (metrics.growthScore <= 40) {
+      concerns.push("Growth score is soft, suggesting limited earnings momentum from available data.");
+      nextSteps.push("Check recent quarterly results to confirm whether slowdown is temporary or structural.");
+    } else if (metrics.growthScore >= 65) {
+      strengths.push("Growth score is constructive based on earnings and sector context.");
+    }
+
+    if (sentimentLabel === "negative") {
+      concerns.push("Recent sentiment trend is negative, which can pressure near-term conviction.");
+      nextSteps.push("Read the top negative headlines and verify if the issue is one-off or business-model related.");
+    } else if (sentimentLabel === "positive") {
+      strengths.push("Recent sentiment trend is positive and supports near-term momentum.");
+    }
+
+    if (fundamentals?.debtToEquity !== null && fundamentals?.debtToEquity !== undefined) {
+      if (fundamentals.debtToEquity > 1.5) {
+        concerns.push("Debt-to-equity is above 1.5, implying elevated leverage risk.");
+        nextSteps.push("Track interest coverage and refinancing risk before considering fresh allocation.");
+      } else if (fundamentals.debtToEquity < 0.5) {
+        strengths.push("Debt-to-equity is below 0.5, indicating a conservative balance sheet.");
+      }
+    }
+
+    if (fundamentals?.peRatio !== null && fundamentals?.peRatio !== undefined) {
+      if (fundamentals.peRatio > 55) {
+        concerns.push("P/E is above 55, so future growth expectations are already priced in aggressively.");
+        nextSteps.push("Use staggered buying (SIP-style entries) instead of lump-sum when valuation is stretched.");
+      } else if (fundamentals.peRatio < 20) {
+        strengths.push("P/E is below 20, offering a more conservative valuation anchor.");
+      }
+    }
+
+    if (concerns.length === 0 && strengths.length === 0) {
+      strengths.push("Signals are mixed but not extreme; the model does not detect a dominant red flag.");
+    }
+
+    return {
+      concerns,
+      strengths,
+      nextSteps: Array.from(new Set(nextSteps)),
+      modelNote: "Heuristics are calibrated for Indian equities with sector-aware ranges, but this remains a screening tool (not a substitute for reading filings and understanding management quality).",
+    };
+  }, [metrics, sentimentLabel]);
+
   async function handleSearch(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!symbolInput.trim()) return;
@@ -603,6 +672,50 @@ export default function Page() {
               <p className="mt-3 text-xs text-stone-400">
                 Updated {lastUpdatedLabel} · Based on price, fundamentals, and news sentiment
               </p>
+              <details className="mt-4 rounded-lg border border-stone-200 bg-stone-50 px-4 py-3">
+                <summary className="cursor-pointer text-sm font-medium text-stone-700">
+                  Why this verdict?
+                </summary>
+                <div className="mt-3 space-y-3 text-sm text-stone-600">
+                  <div>
+                    <p className="mb-1 font-medium text-stone-700">Key concerns</p>
+                    {verdictBreakdown.concerns.length > 0 ? (
+                      <ul className="space-y-1">
+                        {verdictBreakdown.concerns.slice(0, 3).map((item) => (
+                          <li key={item}>• {item}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p>No material red flags triggered by current inputs.</p>
+                    )}
+                  </div>
+                  <div>
+                    <p className="mb-1 font-medium text-stone-700">What offsets the risk</p>
+                    {verdictBreakdown.strengths.length > 0 ? (
+                      <ul className="space-y-1">
+                        {verdictBreakdown.strengths.slice(0, 3).map((item) => (
+                          <li key={item}>• {item}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p>No major offsetting strengths detected.</p>
+                    )}
+                  </div>
+                  <div>
+                    <p className="mb-1 font-medium text-stone-700">Beginner next checks</p>
+                    {verdictBreakdown.nextSteps.length > 0 ? (
+                      <ul className="space-y-1">
+                        {verdictBreakdown.nextSteps.slice(0, 3).map((item) => (
+                          <li key={item}>• {item}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p>Start with annual report, investor presentation, and peer comparison before investing.</p>
+                    )}
+                  </div>
+                  <p className="text-xs text-stone-500">{verdictBreakdown.modelNote}</p>
+                </div>
+              </details>
             </div>
           ) : null}
         </section>
