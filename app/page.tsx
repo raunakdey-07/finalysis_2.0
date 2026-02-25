@@ -35,6 +35,32 @@ const NewsSection = dynamic(() => import("@/components/home/news-section"), {
   ),
 });
 
+const AnalysisCards = dynamic(() => import("@/components/home/analysis-cards"), {
+  ssr: false,
+  loading: () => (
+    <section className="mb-12 grid gap-6 sm:grid-cols-3">
+      {[1, 2, 3].map((i) => (
+        <div key={i} className="rounded-xl border-t-4 border-t-stone-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div className="h-4 w-24 animate-pulse rounded bg-stone-200" />
+            <div className="h-4 w-12 animate-pulse rounded bg-stone-200" />
+          </div>
+          <div className="mt-4 h-10 w-16 animate-pulse rounded bg-stone-200" />
+          <div className="mt-2 h-1.5 w-full animate-pulse rounded bg-stone-200" />
+          <div className="mt-5 space-y-2.5 border-t border-stone-100 pt-4">
+            {[1, 2, 3].map((j) => (
+              <div key={j} className="flex justify-between">
+                <div className="h-4 w-16 animate-pulse rounded bg-stone-200" />
+                <div className="h-4 w-12 animate-pulse rounded bg-stone-200" />
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </section>
+  ),
+});
+
 // ============================================================================
 // DESIGN SYSTEM - Muted, earthy semantic colors
 // ============================================================================
@@ -72,48 +98,12 @@ function getVerdict(score: number): keyof typeof VERDICT {
   return "weak";
 }
 
-/** Score to confident label - analyst language */
-function scoreLabel(score: number): string {
-  if (score >= 70) return "Strong";
-  if (score >= SCORE_STRONG) return "Solid";
-  if (score >= 50) return "Mixed";
-  if (score >= SCORE_MODERATE) return "Cautious";
-  return "Weak";
-}
-
 // ============================================================================
 // SKELETON COMPONENTS - Loading placeholders
 // ============================================================================
 
 function Skeleton({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded bg-stone-200 ${className}`} />;
-}
-
-function CardSkeleton() {
-  return (
-    <div className="rounded-xl border-t-4 border-t-stone-200 bg-white p-5 shadow-sm">
-      <div className="flex items-center justify-between">
-        <Skeleton className="h-4 w-24" />
-        <Skeleton className="h-4 w-12" />
-      </div>
-      <Skeleton className="mt-4 h-10 w-16" />
-      <Skeleton className="mt-2 h-1.5 w-full" />
-      <div className="mt-5 space-y-2.5 border-t border-stone-100 pt-4">
-        <div className="flex justify-between">
-          <Skeleton className="h-4 w-16" />
-          <Skeleton className="h-4 w-12" />
-        </div>
-        <div className="flex justify-between">
-          <Skeleton className="h-4 w-16" />
-          <Skeleton className="h-4 w-12" />
-        </div>
-        <div className="flex justify-between">
-          <Skeleton className="h-4 w-16" />
-          <Skeleton className="h-4 w-12" />
-        </div>
-      </div>
-    </div>
-  );
 }
 
 function VerdictSkeleton() {
@@ -125,13 +115,6 @@ function VerdictSkeleton() {
       <Skeleton className="mt-3 h-3 w-56" />
     </div>
   );
-}
-
-/** Sentiment verdict */
-function sentimentVerdict(label: string): keyof typeof VERDICT {
-  if (label === "positive") return "strong";
-  if (label === "negative") return "weak";
-  return "moderate";
 }
 
 // ============================================================================
@@ -679,145 +662,16 @@ export default function Page() {
           <div className="h-px flex-1 bg-stone-200" />
         </div>
 
-        {/* Three Analysis Cards - consistent but varied by role */}
-        <section className="mb-12 grid gap-6 sm:grid-cols-3">
-          
-          {/* Card 1: Good Business? */}
-          {loadingMetrics ? (
-            <CardSkeleton />
-          ) : (() => {
-            const score = metrics?.profitabilityScore ?? 50;
-            const verdict = getVerdict(score);
-            return (
-              <div className={`rounded-xl border-t-4 ${VERDICT[verdict].accent.replace('border-l-', 'border-t-')} bg-white p-5 shadow-sm`}>
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-stone-600">Good business?</p>
-                  {metrics && (
-                    <span className={`text-xs font-semibold ${VERDICT[verdict].text}`}>{scoreLabel(score)}</span>
-                  )}
-                </div>
-                
-                {metrics ? (
-                  <>
-                    <p className={`mt-4 text-4xl font-semibold ${VERDICT[verdict].text}`}>{score}</p>
-                    <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-stone-100">
-                      <div className={`h-1.5 rounded-full transition-all ${VERDICT[verdict].bg}`} style={{ width: `${score}%` }} />
-                    </div>
-                    
-                    <div className="mt-5 space-y-2.5 border-t border-stone-100 pt-4">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-stone-400">ROE</span>
-                        <span className="font-medium text-stone-700">{fmt2(metrics.fundamentals?.roe)}%</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-stone-400">ROCE</span>
-                        <span className="font-medium text-stone-700">{fmt2(metrics.fundamentals?.roce)}%</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-stone-400">Dividend</span>
-                        <span className="font-medium text-stone-700">{fmt2(metrics.fundamentals?.dividendYield)}%</span>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <p className="mt-6 text-sm text-stone-400">Data unavailable</p>
-                )}
-              </div>
-            );
-          })()}
-
-          {/* Card 2: Getting Better? */}
-          {loadingQuote && loadingNews ? (
-            <CardSkeleton />
-          ) : (() => {
-            const verdict = sentimentVerdict(sentimentLabel);
-            const momentumScore = sentimentLabel === "positive" ? 70 : sentimentLabel === "negative" ? 30 : 50;
-            return (
-              <div className={`rounded-xl border-t-4 ${VERDICT[verdict].accent.replace('border-l-', 'border-t-')} bg-white p-5 shadow-sm`}>
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-stone-600">Getting better?</p>
-                  <span className={`text-xs font-semibold ${VERDICT[verdict].text}`}>
-                    {sentimentLabel === "positive" ? "Yes" : sentimentLabel === "negative" ? "No" : "Mixed"}
-                  </span>
-                </div>
-
-                {stockDataUnavailable || effectiveChange === null ? (
-                  <p className="mt-6 text-sm text-stone-400">Data unavailable</p>
-                ) : (
-                  <>
-                    <p className={`mt-4 text-4xl font-semibold ${effectiveChange >= 1 ? "text-teal-600" : effectiveChange <= -1 ? "text-amber-600" : "text-stone-600"}`}>
-                      {effectiveChange >= 0 ? "+" : ""}{effectiveChange.toFixed(2)}%
-                    </p>
-                    <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-stone-100">
-                      <div className={`h-1.5 rounded-full transition-all ${VERDICT[verdict].bg}`} style={{ width: `${momentumScore}%` }} />
-                    </div>
-
-                    <div className="mt-5 space-y-2.5 border-t border-stone-100 pt-4">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-stone-400">Today</span>
-                        <span className={`font-medium ${effectiveChange >= 0 ? "text-teal-600" : "text-amber-600"}`}>
-                          {effectiveChange >= 0 ? "Up" : "Down"}
-                        </span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-stone-400">News tone</span>
-                        <span className="font-medium capitalize text-stone-700">{sentimentLabel}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-stone-400">Articles</span>
-                        <span className="font-medium text-stone-700">{news.length}</span>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-          })()}
-
-          {/* Card 3: Fair Price? */}
-          {loadingMetrics ? (
-            <CardSkeleton />
-          ) : (() => {
-            const score = metrics?.valuationScore ?? 50;
-            const verdict = getVerdict(score);
-            return (
-              <div className={`rounded-xl border-t-4 ${VERDICT[verdict].accent.replace('border-l-', 'border-t-')} bg-white p-5 shadow-sm`}>
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-stone-600">Fair price?</p>
-                  {metrics && (
-                    <span className={`text-xs font-semibold ${VERDICT[verdict].text}`}>{scoreLabel(score)}</span>
-                  )}
-                </div>
-                
-                {metrics ? (
-                  <>
-                    <p className={`mt-4 text-4xl font-semibold ${VERDICT[verdict].text}`}>{score}</p>
-                    <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-stone-100">
-                      <div className={`h-1.5 rounded-full transition-all ${VERDICT[verdict].bg}`} style={{ width: `${score}%` }} />
-                    </div>
-                    
-                    <div className="mt-5 space-y-2.5 border-t border-stone-100 pt-4">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-stone-400">P/E</span>
-                        <span className="font-medium text-stone-700">{fmt2(metrics.fundamentals?.peRatio)}x</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-stone-400">P/B</span>
-                        <span className="font-medium text-stone-700">{fmt2(metrics.fundamentals?.pbRatio)}x</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-stone-400">Book value</span>
-                        <span className="font-medium text-stone-700">₹{fmt2(metrics.fundamentals?.bookValue)}</span>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <p className="mt-6 text-sm text-stone-400">Data unavailable</p>
-                )}
-              </div>
-            );
-          })()}
-        </section>
+        <AnalysisCards
+          loadingMetrics={loadingMetrics}
+          loadingQuote={loadingQuote}
+          loadingNews={loadingNews}
+          metrics={metrics}
+          sentimentLabel={sentimentLabel}
+          stockDataUnavailable={stockDataUnavailable}
+          effectiveChange={effectiveChange}
+          newsCount={news.length}
+        />
 
         <NewsSection loadingNews={loadingNews} news={news} newsProv={newsProv} />
 
