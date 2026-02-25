@@ -119,21 +119,21 @@ export default function AnalysisCards({
 
                 <div className="mt-5 space-y-2.5 border-t border-stone-100 pt-4">
                   <div className="flex justify-between text-sm">
-                    <span className="text-stone-400">ROE</span>
+                    <span className="text-stone-500">ROE</span>
                     <span className="font-medium text-stone-700">{fmt2(metrics.fundamentals?.roe)}%</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-stone-400">ROCE</span>
+                    <span className="text-stone-500">ROCE</span>
                     <span className="font-medium text-stone-700">{fmt2(metrics.fundamentals?.roce)}%</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-stone-400">Dividend</span>
+                    <span className="text-stone-500">Dividend</span>
                     <span className="font-medium text-stone-700">{fmt2(metrics.fundamentals?.dividendYield)}%</span>
                   </div>
                 </div>
               </>
             ) : (
-              <p className="mt-6 text-sm text-stone-400">Data unavailable</p>
+              <p className="mt-6 text-sm text-stone-500">Data unavailable</p>
             )}
           </div>
         );
@@ -154,7 +154,7 @@ export default function AnalysisCards({
             </div>
 
             {stockDataUnavailable || effectiveChange === null ? (
-              <p className="mt-6 text-sm text-stone-400">Data unavailable</p>
+              <p className="mt-6 text-sm text-stone-500">Data unavailable</p>
             ) : (
               <>
                 <p className={`mt-4 text-4xl font-semibold ${effectiveChange >= 1 ? "text-teal-600" : effectiveChange <= -1 ? "text-amber-600" : "text-stone-600"}`}>
@@ -167,17 +167,17 @@ export default function AnalysisCards({
 
                 <div className="mt-5 space-y-2.5 border-t border-stone-100 pt-4">
                   <div className="flex justify-between text-sm">
-                    <span className="text-stone-400">Today</span>
+                    <span className="text-stone-500">Today</span>
                     <span className={`font-medium ${effectiveChange >= 0 ? "text-teal-600" : "text-amber-600"}`}>
                       {effectiveChange >= 0 ? "Up" : "Down"}
                     </span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-stone-400">News tone</span>
+                    <span className="text-stone-500">News tone</span>
                     <span className="font-medium capitalize text-stone-700">{sentimentLabel}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-stone-400">Articles</span>
+                    <span className="text-stone-500">Articles</span>
                     <span className="font-medium text-stone-700">{newsCount}</span>
                   </div>
                 </div>
@@ -208,21 +208,21 @@ export default function AnalysisCards({
 
                 <div className="mt-5 space-y-2.5 border-t border-stone-100 pt-4">
                   <div className="flex justify-between text-sm">
-                    <span className="text-stone-400">P/E</span>
+                    <span className="text-stone-500">P/E</span>
                     <span className="font-medium text-stone-700">{fmt2(metrics.fundamentals?.peRatio)}x</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-stone-400">P/B</span>
+                    <span className="text-stone-500">P/B</span>
                     <span className="font-medium text-stone-700">{fmt2(metrics.fundamentals?.pbRatio)}x</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-stone-400">Book value</span>
+                    <span className="text-stone-500">Book value</span>
                     <span className="font-medium text-stone-700">₹{fmt2(metrics.fundamentals?.bookValue)}</span>
                   </div>
                 </div>
               </>
             ) : (
-              <p className="mt-6 text-sm text-stone-400">Data unavailable</p>
+              <p className="mt-6 text-sm text-stone-500">Data unavailable</p>
             )}
           </div>
         );

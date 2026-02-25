@@ -50,7 +50,7 @@ export default function NewsSection({ loadingNews, news, newsProv }: NewsSection
     <section className="mb-12">
       <div className="mb-4 flex items-center gap-4">
         <div className="h-px flex-1 bg-stone-200" />
-        <span className="text-xs font-medium uppercase tracking-widest text-stone-400">What People Are Saying</span>
+        <span className="text-xs font-medium uppercase tracking-widest text-stone-500">What People Are Saying</span>
         <div className="h-px flex-1 bg-stone-200" />
       </div>
 
@@ -58,7 +58,7 @@ export default function NewsSection({ loadingNews, news, newsProv }: NewsSection
         {loadingNews ? (
           <NewsSkeleton />
         ) : news.length === 0 ? (
-          <p className="py-6 text-center text-sm text-stone-400">No recent coverage found for this stock.</p>
+          <p className="py-6 text-center text-sm text-stone-500">No recent coverage found for this stock.</p>
         ) : (
           <div className="divide-y divide-stone-100">
             {news.slice(0, 5).map((item) => {
@@ -74,7 +74,7 @@ export default function NewsSection({ loadingNews, news, newsProv }: NewsSection
                   <span className={`mt-2 h-1.5 w-1.5 flex-shrink-0 rounded-full ${SENTIMENT_DOT[sentiment]}`} />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm leading-relaxed text-stone-700 group-hover:text-stone-900">{item.title}</p>
-                    <p className="mt-1 text-xs text-stone-400">
+                    <p className="mt-1 text-xs text-stone-500">
                       <span className="font-medium">{item.source}</span> · {relativeTime(new Date(item.pubDate))}
                     </p>
                   </div>
@@ -84,7 +84,7 @@ export default function NewsSection({ loadingNews, news, newsProv }: NewsSection
           </div>
         )}
       </div>
-      <p className="mt-3 text-center text-xs text-stone-400">
+      <p className="mt-3 text-center text-xs text-stone-500">
         News aggregated from {newsProv?.source ?? "Google News RSS"} for sentiment analysis
       </p>
     </section>

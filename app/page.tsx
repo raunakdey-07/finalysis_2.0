@@ -15,7 +15,7 @@ const NewsSection = dynamic(() => import("@/components/home/news-section"), {
     <section className="mb-12">
       <div className="mb-4 flex items-center gap-4">
         <div className="h-px flex-1 bg-stone-200" />
-        <span className="text-xs font-medium uppercase tracking-widest text-stone-400">What People Are Saying</span>
+        <span className="text-xs font-medium uppercase tracking-widest text-stone-500">What People Are Saying</span>
         <div className="h-px flex-1 bg-stone-200" />
       </div>
       <div className="rounded-xl bg-white p-5 shadow-sm">
@@ -497,7 +497,7 @@ export default function Page() {
         
           {/* Masthead - confident but calm */}
           <header className="mb-10 border-b border-stone-200 pb-6">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-stone-400">Finalysis</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-stone-500">Finalysis</p>
             <h1 className="mt-2 text-2xl font-semibold tracking-tight text-stone-800 sm:text-3xl">
               Simple stock research for India
             </h1>
@@ -508,7 +508,7 @@ export default function Page() {
 
           {/* Stock Selector - informative quick picks */}
           <section className="mb-10">
-            <p className="mb-3 text-xs font-medium uppercase tracking-wider text-stone-400">Popular stocks</p>
+            <p className="mb-3 text-xs font-medium uppercase tracking-wider text-stone-500">Popular stocks</p>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {Object.entries(DEMO_TICKERS).map(([key, value]) => {
               // Show live data only when selected and loaded
@@ -539,7 +539,7 @@ export default function Page() {
                       {(price?.daily_change_percent ?? 0) >= 0 ? "+" : ""}{(price?.daily_change_percent ?? 0).toFixed(1)}%
                     </span>
                   ) : (
-                    <span className="text-xs font-medium text-stone-300">—</span>
+                    <span className="text-xs font-medium text-stone-400">—</span>
                   )}
                 </button>
               );
@@ -549,7 +549,7 @@ export default function Page() {
             <input
               value={symbolInput}
               onChange={(e) => setSymbolInput(e.target.value)}
-              className="flex-1 rounded-lg border border-stone-300 bg-white px-4 py-2.5 text-sm placeholder:text-stone-400 focus:border-stone-500 focus:outline-none sm:flex-none sm:w-64"
+              className="flex-1 rounded-lg border border-stone-300 bg-white px-4 py-2.5 text-sm placeholder:text-stone-500 focus:border-stone-500 focus:outline-none sm:flex-none sm:w-64"
               placeholder="Search any NSE ticker (e.g., BAJFINANCE)"
             />
             <button
@@ -604,7 +604,7 @@ export default function Page() {
                   : `${displayName} raises concerns on multiple fronts. The current valuation or business quality may not justify the risk.`
                 }
               </p>
-              <p className="mt-3 text-xs text-stone-400">
+              <p className="mt-3 text-xs text-stone-500">
                 Updated {lastUpdatedLabel} · Based on price, fundamentals, and news sentiment
               </p>
               <details className="mt-4 rounded-lg border border-stone-200 bg-stone-50 px-4 py-3">
@@ -658,7 +658,7 @@ export default function Page() {
         {/* Section Divider */}
         <div className="mb-8 flex items-center gap-4">
           <div className="h-px flex-1 bg-stone-200" />
-          <span className="text-xs font-medium uppercase tracking-widest text-stone-400">The Details</span>
+          <span className="text-xs font-medium uppercase tracking-widest text-stone-500">The Details</span>
           <div className="h-px flex-1 bg-stone-200" />
         </div>
 
@@ -677,7 +677,7 @@ export default function Page() {
 
           {/* Footer - minimal, trustworthy */}
           <footer className="border-t border-stone-200 pt-8 text-center">
-            <p className="text-xs text-stone-400">
+            <p className="text-xs text-stone-500">
               Data from NSE, Screener.in, and Google News · Cached for reliability
             </p>
             <p className="mt-2 text-xs font-medium text-stone-500">
