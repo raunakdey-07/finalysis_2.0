@@ -1,8 +1,39 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import type { ApiResponse, NewsItem, Provenance, StockFundamentals, StockMetrics, StockPrice } from "@/types";
-import DisclaimerModal from "@/components/disclaimer-modal";
+
+const DisclaimerModal = dynamic(() => import("@/components/disclaimer-modal"), {
+  ssr: false,
+  loading: () => null,
+});
+
+const NewsSection = dynamic(() => import("@/components/home/news-section"), {
+  ssr: false,
+  loading: () => (
+    <section className="mb-12">
+      <div className="mb-4 flex items-center gap-4">
+        <div className="h-px flex-1 bg-stone-200" />
+        <span className="text-xs font-medium uppercase tracking-widest text-stone-400">What People Are Saying</span>
+        <div className="h-px flex-1 bg-stone-200" />
+      </div>
+      <div className="rounded-xl bg-white p-5 shadow-sm">
+        <div className="space-y-3">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="flex items-start gap-4 py-3">
+              <div className="mt-2 h-1.5 w-1.5 flex-shrink-0 animate-pulse rounded-full bg-stone-200" />
+              <div className="min-w-0 flex-1">
+                <div className="h-4 w-full animate-pulse rounded bg-stone-200" />
+                <div className="mt-2 h-3 w-32 animate-pulse rounded bg-stone-200" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  ),
+});
 
 // ============================================================================
 // DESIGN SYSTEM - Muted, earthy semantic colors
@@ -96,22 +127,6 @@ function VerdictSkeleton() {
   );
 }
 
-function NewsSkeleton() {
-  return (
-    <div className="space-y-3">
-      {[1, 2, 3, 4, 5].map((i) => (
-        <div key={i} className="flex items-start gap-4 py-3">
-          <Skeleton className="mt-2 h-1.5 w-1.5 flex-shrink-0 rounded-full" />
-          <div className="min-w-0 flex-1">
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="mt-2 h-3 w-32" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 /** Sentiment verdict */
 function sentimentVerdict(label: string): keyof typeof VERDICT {
   if (label === "positive") return "strong";
@@ -125,95 +140,32 @@ function sentimentVerdict(label: string): keyof typeof VERDICT {
 
 type DemoTicker = {
   name: string;
-  price: number;
-  changePct: number;
-  sentiment: "positive" | "neutral" | "negative";
-  lastUpdated: string;
-  cacheTTL: string;
-  source: string;
-  confidence: "high" | "medium" | "derived";
 };
 
 const DEMO_TICKERS: Record<string, DemoTicker> = {
   "ITC.NS": {
     name: "ITC",
-    price: 423,
-    changePct: -0.6,
-    sentiment: "neutral",
-    lastUpdated: "recent",
-    cacheTTL: "10m",
-    source: "NSE public endpoints",
-    confidence: "high",
   },
   "TCS.NS": {
     name: "TCS",
-    price: 4065,
-    changePct: 0.4,
-    sentiment: "positive",
-    lastUpdated: "recent",
-    cacheTTL: "10m",
-    source: "NSE public endpoints",
-    confidence: "high",
   },
   "RELIANCE.NS": {
     name: "Reliance",
-    price: 1286,
-    changePct: -0.3,
-    sentiment: "neutral",
-    lastUpdated: "recent",
-    cacheTTL: "10m",
-    source: "NSE public endpoints",
-    confidence: "medium",
   },
   "HDFCBANK.NS": {
     name: "HDFC Bank",
-    price: 1745,
-    changePct: 1.2,
-    sentiment: "positive",
-    lastUpdated: "recent",
-    cacheTTL: "10m",
-    source: "NSE public endpoints",
-    confidence: "high",
   },
   "INFY.NS": {
     name: "Infosys",
-    price: 1892,
-    changePct: -0.8,
-    sentiment: "neutral",
-    lastUpdated: "recent",
-    cacheTTL: "10m",
-    source: "NSE public endpoints",
-    confidence: "high",
   },
   "BHARTIARTL.NS": {
     name: "Airtel",
-    price: 1654,
-    changePct: 0.9,
-    sentiment: "positive",
-    lastUpdated: "recent",
-    cacheTTL: "10m",
-    source: "NSE public endpoints",
-    confidence: "high",
   },
   "HINDUNILVR.NS": {
     name: "HUL",
-    price: 2380,
-    changePct: -0.2,
-    sentiment: "neutral",
-    lastUpdated: "recent",
-    cacheTTL: "10m",
-    source: "NSE public endpoints",
-    confidence: "high",
   },
   "ASIANPAINT.NS": {
     name: "Asian Paints",
-    price: 2245,
-    changePct: -1.4,
-    sentiment: "negative",
-    lastUpdated: "recent",
-    cacheTTL: "10m",
-    source: "NSE public endpoints",
-    confidence: "medium",
   },
 };
 
@@ -399,13 +351,6 @@ export default function Page() {
   const baseTicker = DEMO_TICKERS[symbol];
   const fallbackTicker: DemoTicker = {
     name: symbol,
-    price: price?.price ?? 0,
-    changePct: price?.daily_change_percent ?? 0,
-    sentiment: "neutral",
-    lastUpdated: quoteProv?.lastUpdated ? new Date(quoteProv.lastUpdated).toLocaleString() : "recent",
-    cacheTTL: quoteProv?.cacheTTL ?? "10m",
-    source: quoteProv?.source ?? "NSE public endpoints",
-    confidence: quoteProv?.confidenceLevel ?? "medium",
   };
   const ticker = baseTicker ?? fallbackTicker;
   const displayName = ticker.name;
@@ -874,50 +819,7 @@ export default function Page() {
           })()}
         </section>
 
-        {/* News as Evidence - editorial treatment */}
-        <section className="mb-12">
-          <div className="mb-4 flex items-center gap-4">
-            <div className="h-px flex-1 bg-stone-200" />
-            <span className="text-xs font-medium uppercase tracking-widest text-stone-400">What People Are Saying</span>
-            <div className="h-px flex-1 bg-stone-200" />
-          </div>
-          
-          <div className="rounded-xl bg-white p-5 shadow-sm">
-            {loadingNews ? (
-              <NewsSkeleton />
-            ) : news.length === 0 ? (
-              <p className="py-6 text-center text-sm text-stone-400">No recent coverage found for this stock.</p>
-            ) : (
-              <div className="divide-y divide-stone-100">
-                {news.slice(0, 5).map((item) => {
-                  const itemVerdict = sentimentVerdict(item.sentiment || "neutral");
-                  return (
-                    <a
-                      key={item.id}
-                      href={item.link}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="group flex items-start gap-4 py-3 first:pt-0 last:pb-0"
-                    >
-                      <span className={`mt-2 h-1.5 w-1.5 flex-shrink-0 rounded-full ${VERDICT[itemVerdict].bg}`} />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm leading-relaxed text-stone-700 group-hover:text-stone-900">
-                          {item.title}
-                        </p>
-                        <p className="mt-1 text-xs text-stone-400">
-                          <span className="font-medium">{item.source}</span> · {relativeTime(new Date(item.pubDate))}
-                        </p>
-                      </div>
-                    </a>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-          <p className="mt-3 text-center text-xs text-stone-400">
-            News aggregated from {newsProv?.source ?? "Google News RSS"} for sentiment analysis
-          </p>
-        </section>
+        <NewsSection loadingNews={loadingNews} news={news} newsProv={newsProv} />
 
           {/* Footer - minimal, trustworthy */}
           <footer className="border-t border-stone-200 pt-8 text-center">
