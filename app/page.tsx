@@ -1,8 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import type { ApiResponse, NewsItem, Provenance, StockFundamentals, StockMetrics, StockPrice } from "@/types";
+import { Funnel } from "lucide-react";
+import type {
+  ApiResponse,
+  NewsItem,
+  Provenance,
+  StockFundamentals,
+  StockMetrics,
+  StockPrice,
+  StockSearchSuggestion,
+} from "@/types";
 
 const DisclaimerModal = dynamic(() => import("@/components/disclaimer-modal"), {
   ssr: false,
@@ -152,6 +161,26 @@ const DEMO_TICKERS: Record<string, DemoTicker> = {
   },
 };
 
+const SEARCH_SECTORS = [
+  "All",
+  "Information Technology",
+  "Banking & Financial Services",
+  "FMCG & Consumer",
+  "Pharma & Healthcare",
+  "Auto & Mobility",
+  "Energy & Utilities",
+  "Metals & Mining",
+  "Infrastructure & Industrials",
+  "Chemicals",
+  "Real Estate",
+  "Telecom & Media",
+  "Textiles & Apparel",
+  "Agriculture",
+] as const;
+
+const SEARCH_SUGGESTION_CACHE_LIMIT = 8;
+const SEARCH_SUGGESTION_CACHE_TTL_MS = 10 * 60 * 1000;
+
 const SENTIMENT_WEIGHT: Record<NonNullable<NewsItem["sentiment"]>, number> = {
   positive: 1,
   neutral: 0,
@@ -161,14 +190,6 @@ const SENTIMENT_WEIGHT: Record<NonNullable<NewsItem["sentiment"]>, number> = {
 // ============================================================================
 // Utilities
 // ============================================================================
-
-/** Format a number or numeric string to 2 decimals, or return "—" */
-function fmt2(value: number | string | null | undefined): string {
-  if (value === null || value === undefined || value === "NA" || value === "") return "—";
-  const num = typeof value === "string" ? parseFloat(value) : value;
-  if (isNaN(num)) return "—";
-  return num.toFixed(2);
-}
 
 /** Format date as relative time */
 function relativeTime(date: Date): string {
@@ -184,6 +205,51 @@ function relativeTime(date: Date): string {
   if (diffDays === 1) return "Yesterday";
   if (diffDays < 7) return `${diffDays}d ago`;
   return date.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+}
+
+function buildSearchParams(query: string, sector: string): URLSearchParams {
+  const params = new URLSearchParams({ q: query });
+  if (sector !== "All") {
+    params.set("sector", sector);
+  }
+  return params;
+}
+
+function buildSearchCacheKey(query: string, sector: string): string {
+  return `${sector.toLowerCase()}::${query.toLowerCase().replace(/\s+/g, " ").trim()}`;
+}
+
+function getCachedSearchSuggestions(
+  cache: Map<string, SearchSuggestionCacheEntry>,
+  key: string
+): StockSearchSuggestion[] | null {
+  const entry = cache.get(key);
+  if (!entry) return null;
+
+  if (Date.now() - entry.timestamp > SEARCH_SUGGESTION_CACHE_TTL_MS) {
+    cache.delete(key);
+    return null;
+  }
+
+  return entry.suggestions;
+}
+
+function setCachedSearchSuggestions(
+  cache: Map<string, SearchSuggestionCacheEntry>,
+  key: string,
+  suggestions: StockSearchSuggestion[]
+): void {
+  cache.delete(key);
+  cache.set(key, {
+    suggestions: suggestions.slice(0, 5),
+    timestamp: Date.now(),
+  });
+
+  while (cache.size > SEARCH_SUGGESTION_CACHE_LIMIT) {
+    const oldestKey = cache.keys().next().value;
+    if (typeof oldestKey !== "string") break;
+    cache.delete(oldestKey);
+  }
 }
 
 // ============================================================================
@@ -219,10 +285,23 @@ type BlendedSentimentState = {
   company: { symbol: string; sentiment: string; score: number; newsCount: number } | null;
 };
 
+type SearchSuggestionCacheEntry = {
+  suggestions: StockSearchSuggestion[];
+  timestamp: number;
+};
+
 export default function Page() {
   const [symbol, setSymbol] = useState<string>("ITC.NS");
   const [symbolInput, setSymbolInput] = useState<string>("ITC.NS");
+  const [searchSector, setSearchSector] = useState<string>("All");
+  const [isSectorFilterOpen, setIsSectorFilterOpen] = useState<boolean>(false);
+  const [searchSuggestions, setSearchSuggestions] = useState<StockSearchSuggestion[]>([]);
+  const [showSearchSuggestions, setShowSearchSuggestions] = useState<boolean>(false);
+  const [loadingSuggestions, setLoadingSuggestions] = useState<boolean>(false);
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState<number>(-1);
   const [searchMessage, setSearchMessage] = useState<string | null>(null);
+  const searchSuggestionRequestId = useRef(0);
+  const searchSuggestionCache = useRef<Map<string, SearchSuggestionCacheEntry>>(new Map());
 
   const [{ price, provenance: quoteProv, error: quoteError }, setQuoteState] = useState<QuoteState>({
     price: null,
@@ -378,6 +457,8 @@ export default function Page() {
   }, [metrics, sentimentLabel]);
 
   const overallVerdict = getVerdict(overallScore);
+  const activeSuggestion = activeSuggestionIndex >= 0 ? searchSuggestions[activeSuggestionIndex] ?? null : null;
+  const activeSuggestionId = activeSuggestion ? `search-suggestion-${activeSuggestion.symbol}` : undefined;
 
   const verdictBreakdown = useMemo(() => {
     const concerns: string[] = [];
@@ -448,15 +529,104 @@ export default function Page() {
     };
   }, [metrics, sentimentLabel]);
 
+  function openSearchSuggestions(nextSuggestions: StockSearchSuggestion[]) {
+    setSearchSuggestions(nextSuggestions);
+    setShowSearchSuggestions(nextSuggestions.length > 0);
+    setActiveSuggestionIndex(nextSuggestions.length > 0 ? 0 : -1);
+  }
+
+  function closeSearchSuggestions() {
+    searchSuggestionRequestId.current += 1;
+    setShowSearchSuggestions(false);
+    setActiveSuggestionIndex(-1);
+    setLoadingSuggestions(false);
+  }
+
+  function clearSearchSuggestions() {
+    searchSuggestionRequestId.current += 1;
+    setSearchSuggestions([]);
+    setShowSearchSuggestions(false);
+    setActiveSuggestionIndex(-1);
+    setLoadingSuggestions(false);
+  }
+
+  function applyResolvedSymbol(resolved: StockSearchSuggestion) {
+    setSymbol(resolved.symbol);
+    setSymbolInput(resolved.symbol);
+    setSearchMessage(`Showing results for ${resolved.name}`);
+    clearSearchSuggestions();
+
+    const url = new URL(window.location.href);
+    url.searchParams.set("symbol", resolved.symbol);
+    window.history.replaceState({}, "", url.toString());
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    const query = symbolInput.trim();
+
+    if (query.length < 3) {
+      clearSearchSuggestions();
+      return;
+    }
+
+    const normalizedCurrent = symbol.replace(/\.NS$/i, "").toUpperCase();
+    const normalizedQuery = query.replace(/\.NS$/i, "").toUpperCase();
+    if (normalizedCurrent === normalizedQuery) {
+      clearSearchSuggestions();
+      return;
+    }
+
+    const cacheKey = buildSearchCacheKey(query, searchSector);
+    const cachedSuggestions = getCachedSearchSuggestions(searchSuggestionCache.current, cacheKey);
+    if (cachedSuggestions) {
+      openSearchSuggestions(cachedSuggestions);
+      setLoadingSuggestions(false);
+      return;
+    }
+
+    const requestId = ++searchSuggestionRequestId.current;
+    const timeoutId = window.setTimeout(async () => {
+      if (cancelled || requestId !== searchSuggestionRequestId.current) return;
+      setLoadingSuggestions(true);
+
+      try {
+        const response = await fetch(`/api/nse/search?${buildSearchParams(query, searchSector).toString()}`);
+        const json: ApiResponse<StockSearchSuggestion[]> = await response.json();
+
+        if (cancelled || requestId !== searchSuggestionRequestId.current) return;
+
+        const suggestions = (json.data ?? []).slice(0, 5);
+        setCachedSearchSuggestions(searchSuggestionCache.current, cacheKey, suggestions);
+        openSearchSuggestions(suggestions);
+      } catch {
+        if (cancelled || requestId !== searchSuggestionRequestId.current) return;
+        clearSearchSuggestions();
+      } finally {
+        if (!cancelled && requestId === searchSuggestionRequestId.current) {
+          setLoadingSuggestions(false);
+        }
+      }
+    }, 220);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [symbolInput, searchSector, symbol]);
+
   async function handleSearch(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!symbolInput.trim()) return;
 
     setSearchMessage(null);
+    closeSearchSuggestions();
 
     try {
-      const res = await fetch(`/api/nse/search?q=${encodeURIComponent(symbolInput.trim())}`);
-      const json: ApiResponse<string[]> = await res.json();
+      const query = symbolInput.trim();
+      const cacheKey = buildSearchCacheKey(query, searchSector);
+      const res = await fetch(`/api/nse/search?${buildSearchParams(query, searchSector).toString()}`);
+      const json: ApiResponse<StockSearchSuggestion[]> = await res.json();
 
       const candidates = json.data ?? [];
       if (!json.success || candidates.length === 0) {
@@ -471,21 +641,59 @@ export default function Page() {
       }
 
       if (candidates.length > 1) {
-        const topMatches = candidates.slice(0, 3).join(", ");
-        setSearchMessage(`Multiple matches found (${topMatches}). Please refine your search.`);
+        const topMatches = candidates
+          .slice(0, 3)
+          .map((candidate) => `${candidate.name} (${candidate.displaySymbol})`)
+          .join(", ");
+        setCachedSearchSuggestions(searchSuggestionCache.current, cacheKey, candidates.slice(0, 5));
+        openSearchSuggestions(candidates.slice(0, 5));
+        setLoadingSuggestions(false);
+        setSearchMessage(
+          searchSector === "All"
+            ? `Multiple matches found (${topMatches}). Please refine your search.`
+            : `Multiple matches found in ${searchSector} (${topMatches}). Please refine your search.`
+        );
         return;
       }
 
       const resolved = candidates[0];
-      setSymbol(resolved);
-      setSymbolInput(resolved);
-      setSearchMessage(json.message ?? null);
-
-      const url = new URL(window.location.href);
-      url.searchParams.set("symbol", resolved);
-      window.history.replaceState({}, "", url.toString());
+      applyResolvedSymbol(resolved);
     } catch {
       setSearchMessage("Search unavailable right now. Please try again.");
+    }
+  }
+
+  function handleSearchKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeSearchSuggestions();
+      return;
+    }
+
+    if (searchSuggestions.length === 0) {
+      return;
+    }
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setShowSearchSuggestions(true);
+      setActiveSuggestionIndex((current) => (current < 0 ? 0 : (current + 1) % searchSuggestions.length));
+      return;
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setShowSearchSuggestions(true);
+      setActiveSuggestionIndex((current) => (current <= 0 ? searchSuggestions.length - 1 : current - 1));
+      return;
+    }
+
+    if (event.key === "Enter" && showSearchSuggestions) {
+      event.preventDefault();
+      const selectedSuggestion = searchSuggestions[activeSuggestionIndex] ?? searchSuggestions[0];
+      if (selectedSuggestion) {
+        applyResolvedSymbol(selectedSuggestion);
+      }
     }
   }
 
@@ -522,6 +730,7 @@ export default function Page() {
                     setSymbol(key);
                     setSymbolInput(key);
                     setSearchMessage(null);
+                    clearSearchSuggestions();
 
                     const url = new URL(window.location.href);
                     url.searchParams.set("symbol", key);
@@ -545,13 +754,111 @@ export default function Page() {
               );
             })}
           </div>
-          <form onSubmit={handleSearch} className="mt-4 flex gap-2">
-            <input
-              value={symbolInput}
-              onChange={(e) => setSymbolInput(e.target.value)}
-              className="flex-1 rounded-lg border border-stone-300 bg-white px-4 py-2.5 text-sm placeholder:text-stone-500 focus:border-stone-500 focus:outline-none sm:flex-none sm:w-64"
-              placeholder="Search any NSE ticker (e.g., BAJFINANCE)"
-            />
+          <form onSubmit={handleSearch} className="mt-4 flex items-start gap-2">
+            <div className="relative flex-1 sm:flex-none sm:w-64">
+              <input
+                value={symbolInput}
+                onChange={(e) => {
+                  setSymbolInput(e.target.value);
+                }}
+                onFocus={() => {
+                  if (searchSuggestions.length > 0) {
+                    setShowSearchSuggestions(true);
+                    setActiveSuggestionIndex((current) => (current < 0 ? 0 : Math.min(current, searchSuggestions.length - 1)));
+                  }
+                }}
+                onKeyDown={handleSearchKeyDown}
+                onBlur={() => {
+                  window.setTimeout(() => closeSearchSuggestions(), 120);
+                }}
+                inputMode="search"
+                enterKeyHint="search"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="none"
+                spellCheck={false}
+                role="combobox"
+                aria-autocomplete="list"
+                aria-expanded={showSearchSuggestions && searchSuggestions.length > 0}
+                aria-controls="search-suggestions-listbox"
+                aria-activedescendant={activeSuggestionId}
+                className="w-full rounded-lg border border-stone-300 bg-white px-4 py-2.5 text-sm placeholder:text-stone-500 focus:border-stone-500 focus:outline-none"
+                placeholder="Search any NSE ticker (e.g., BAJFINANCE)"
+              />
+              {showSearchSuggestions ? (
+                <div id="search-suggestions-listbox" role="listbox" className="absolute left-0 right-0 z-20 mt-1 overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
+                  {loadingSuggestions ? (
+                    <p className="px-3 py-2 text-xs text-stone-500">Finding matches...</p>
+                  ) : searchSuggestions.length === 0 ? (
+                    <p className="px-3 py-2 text-xs text-stone-500">No matches found.</p>
+                  ) : (
+                    <ul className="max-h-72 overflow-y-auto">
+                      {searchSuggestions.map((suggestion, index) => {
+                        const isActive = index === activeSuggestionIndex;
+
+                        return (
+                        <li key={`${suggestion.symbol}-${suggestion.sector}`}>
+                          <button
+                            id={`search-suggestion-${suggestion.symbol}`}
+                            type="button"
+                            role="option"
+                            aria-selected={isActive}
+                            onPointerDown={(event) => {
+                              if (event.pointerType !== 'mouse') {
+                                event.preventDefault();
+                                applyResolvedSymbol(suggestion);
+                              }
+                            }}
+                            onMouseEnter={() => setActiveSuggestionIndex(index)}
+                            onClick={() => applyResolvedSymbol(suggestion)}
+                            className={`w-full border-b border-stone-100 px-3 py-2 text-left last:border-b-0 hover:bg-stone-50 ${
+                              isActive ? 'bg-stone-100' : ''
+                            }`}
+                          >
+                            <p className="text-sm font-medium text-stone-800">{suggestion.name}</p>
+                            <p className="text-xs text-stone-500">
+                              {suggestion.displaySymbol} · {suggestion.sector}
+                              {suggestion.industry ? ` · ${suggestion.industry}` : ""}
+                            </p>
+                          </button>
+                        </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              ) : null}
+            </div>
+            <details
+              open={isSectorFilterOpen}
+              onToggle={(event) => setIsSectorFilterOpen((event.currentTarget as HTMLDetailsElement).open)}
+              className="relative"
+            >
+              <summary className="flex h-[42px] w-10 list-none items-center justify-center rounded-lg border border-stone-300 bg-white text-stone-600 transition hover:border-stone-500 hover:text-stone-800 [&::-webkit-details-marker]:hidden">
+                <Funnel className="h-4 w-4" />
+                <span className="sr-only">Filter search by sector</span>
+              </summary>
+              <div className="absolute right-0 z-30 mt-1 w-56 rounded-lg border border-stone-200 bg-white p-3 shadow-sm">
+                <label htmlFor="search-sector" className="mt-2 block text-xs font-medium text-stone-600">
+                  Sector Filter
+                </label>
+                <select
+                  id="search-sector"
+                  value={searchSector}
+                  onChange={(e) => {
+                    setSearchSector(e.target.value);
+                    setIsSectorFilterOpen(false);
+                  }}
+                  className="mt-1 w-full rounded-md border border-stone-300 bg-white px-2 py-1.5 text-xs text-stone-700 focus:border-stone-500 focus:outline-none"
+                >
+                  {SEARCH_SECTORS.map((sector) => (
+                    <option key={sector} value={sector}>
+                      {sector}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </details>
             <button
               type="submit"
               className="rounded-lg bg-stone-800 px-5 py-2.5 text-sm font-medium text-white hover:bg-stone-700"

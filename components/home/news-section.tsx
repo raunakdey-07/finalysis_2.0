@@ -46,6 +46,8 @@ type NewsSectionProps = {
 };
 
 export default function NewsSection({ loadingNews, news, newsProv }: NewsSectionProps) {
+  const usingFallbackResources = news.some((item) => item.source === "Finalysis Resources");
+
   return (
     <section className="mb-12">
       <div className="mb-4 flex items-center gap-4">
@@ -55,6 +57,11 @@ export default function NewsSection({ loadingNews, news, newsProv }: NewsSection
       </div>
 
       <div className="rounded-xl bg-white p-5 shadow-sm">
+        {usingFallbackResources ? (
+          <p className="mb-3 rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-xs text-stone-600">
+            Live RSS is thin right now. Showing trusted fallback resources so research never stalls.
+          </p>
+        ) : null}
         {loadingNews ? (
           <NewsSkeleton />
         ) : news.length === 0 ? (

@@ -1,5 +1,6 @@
 import { Provenance, StockPrice } from '@/types';
 import cache from '@/lib/cache';
+import { fetchWithTimeout } from '@/lib/utils/fetch-with-timeout';
 
 const NSE_BASE_URL = 'https://www.nseindia.com';
 const QUOTE_TTL_MS = 10 * 60 * 1000; // 5–15m window; choose 10m middle
@@ -122,9 +123,9 @@ export async function fetchNSEQuote(symbol: string): Promise<QuoteResult> {
 
   try {
     const data = await withRetries('quote', async () => {
-      const response = await fetch(`${NSE_BASE_URL}/api/quote-equity?symbol=${symbol}`, {
+      const response = await fetchWithTimeout(`${NSE_BASE_URL}/api/quote-equity?symbol=${encodeURIComponent(symbol)}`, {
         headers: getHeaders(),
-      });
+      }, 10_000);
 
       if (!response.ok) {
         throw new Error(`NSE API error: ${response.status}`);
@@ -238,9 +239,9 @@ export async function searchStocks(query: string): Promise<SearchResult> {
 
   try {
     const data = await withRetries('search', async () => {
-      const response = await fetch(`${NSE_BASE_URL}/api/search/autocomplete?q=${query}`, {
+      const response = await fetchWithTimeout(`${NSE_BASE_URL}/api/search/autocomplete?q=${encodeURIComponent(query)}`, {
         headers: getHeaders(),
-      });
+      }, 10_000);
 
       if (!response.ok) {
         throw new Error(`NSE search error: ${response.status}`);

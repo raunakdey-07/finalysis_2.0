@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 
 const NSE_EQUITY_LIST_URL = 'https://archives.nseindia.com/content/equities/EQUITY_L.csv';
 const targetPath = path.resolve(process.cwd(), 'data/nse_symbols.json');
@@ -94,6 +95,7 @@ async function fetchNseRows() {
 
   const symbolIndex = normalizedHeaders.findIndex((h) => h === 'symbol');
   const nameIndex = normalizedHeaders.findIndex((h) => h === 'name of company');
+  const industryIndex = normalizedHeaders.findIndex((h) => h === 'industry');
 
   if (symbolIndex < 0 || nameIndex < 0) {
     throw new Error('Could not locate required columns in NSE CSV');
@@ -109,7 +111,11 @@ async function fetchNseRows() {
     if (!symbol || !name) continue;
     if (!/^[A-Z0-9&\-.]+$/.test(symbol)) continue;
 
-    rows.push({ symbol: `${symbol}.NS`, name });
+    rows.push({
+      symbol: `${symbol}.NS`,
+      name,
+      industry: industryIndex >= 0 ? String(cols[industryIndex] || '').trim() : '',
+    });
   }
 
   return rows;
@@ -137,26 +143,40 @@ async function main() {
 
     mergedMap.set(row.symbol, {
       symbol: row.symbol,
-      name: previous?.name?.trim() || row.name,
+      name: row.name || previous?.name?.trim() || '',
+      industry: row.industry || previous?.industry || '',
       aliases,
     });
   }
 
-  for (const [symbol, entry] of existingMap.entries()) {
-    if (!mergedMap.has(symbol)) {
-      mergedMap.set(symbol, {
-        symbol,
-        name: entry.name,
-        aliases: Array.from(new Set((entry.aliases || []).map((a) => String(a).trim().toLowerCase()).filter(Boolean))),
-      });
-    }
-  }
+  const staleSymbols = Array.from(existingMap.keys()).filter((symbol) => !mergedMap.has(symbol));
 
   const merged = Array.from(mergedMap.values()).sort((a, b) => a.symbol.localeCompare(b.symbol));
 
   fs.writeFileSync(targetPath, `${JSON.stringify(merged, null, 2)}\n`, 'utf8');
 
-  console.log(`Synced ${merged.length} symbols to data/nse_symbols.json`);
+  console.log(`Synced ${merged.length} active NSE symbols to data/nse_symbols.json`);
+  if (staleSymbols.length > 0) {
+    console.log(`Dropped ${staleSymbols.length} stale symbols no longer present in NSE EQUITY_L.csv`);
+  }
+
+  const enrichIndustryResult = spawnSync('node', ['scripts/enrich-nse-industries.mjs', '--concurrency=8'], {
+    cwd: process.cwd(),
+    stdio: 'inherit',
+  });
+
+  if (enrichIndustryResult.status !== 0) {
+    console.warn('Warning: industry enrichment failed; continuing with available metadata.');
+  }
+
+  const buildStocksResult = spawnSync('node', ['scripts/build-stocks-dataset.mjs'], {
+    cwd: process.cwd(),
+    stdio: 'inherit',
+  });
+
+  if (buildStocksResult.status !== 0) {
+    throw new Error('Failed to build data/stocks.json after syncing symbols');
+  }
 }
 
 main().catch((err) => {

@@ -6,7 +6,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchNews, getStockNews, getSentimentMix } from '@/lib/sentiment';
 import { rateLimit, getClientId, RATE_LIMITS } from '@/lib/rate-limit';
+import { parseOptionalNseSymbol } from '@/lib/utils/symbol';
 import { ApiResponse, NewsItem } from '@/types';
+
+function parseLimit(limitParam: string | null, fallback: number, max: number): number {
+  if (!limitParam) return fallback;
+  const parsed = Number.parseInt(limitParam, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+  return Math.min(parsed, max);
+}
 
 export async function GET(request: NextRequest) {
   // Rate limiting
@@ -15,7 +23,7 @@ export async function GET(request: NextRequest) {
   
   if (!rateLimitResult.success) {
     return NextResponse.json(
-      { success: false, error: `Rate limit exceeded. Try again in ${rateLimitResult.resetIn}s.`, errorCode: 'RATE_LIMITED', timestamp: new Date() },
+      { success: false, error: `Rate limit exceeded. Try again in ${rateLimitResult.resetIn}s.`, errorCode: 'RATE_LIMITED', timestamp: new Date().toISOString() },
       { status: 429, headers: { 'Retry-After': String(rateLimitResult.resetIn) } }
     );
   }
@@ -25,16 +33,29 @@ export async function GET(request: NextRequest) {
     const symbol = searchParams.get('symbol');
     const limitParam = searchParams.get('limit');
     const type = searchParams.get('type');
-    
-    const limit = limitParam ? parseInt(limitParam, 10) : 20;
+
+    const limit = parseLimit(limitParam, 20, 50);
+    const parsedSymbol = parseOptionalNseSymbol(symbol);
+
+    if (!parsedSymbol.success) {
+      const errorResponse: ApiResponse<null> = {
+        success: false,
+        error: parsedSymbol.error,
+        errorCode: parsedSymbol.errorCode,
+        timestamp: new Date().toISOString(),
+      };
+      return NextResponse.json(errorResponse, { status: 400 });
+    }
+
+    const normalizedSymbol = parsedSymbol.symbol;
 
     if (type === 'sentiment') {
-      const sentiment = await getSentimentMix(symbol?.toUpperCase());
+      const sentiment = await getSentimentMix(normalizedSymbol ?? undefined);
       const response: ApiResponse<typeof sentiment> = {
         success: true,
         data: sentiment,
-        message: symbol ? `Blended sentiment for ${symbol.toUpperCase()} computed.` : 'Market sentiment computed.',
-        timestamp: new Date(),
+        message: normalizedSymbol ? `Blended sentiment for ${normalizedSymbol} computed.` : 'Market sentiment computed.',
+        timestamp: new Date().toISOString(),
         provenance: sentiment.provenance,
       };
       return NextResponse.json(response, {
@@ -45,15 +66,15 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const { items, provenance } = symbol
-      ? await getStockNews(symbol.toUpperCase(), limit)
+    const { items, provenance } = normalizedSymbol
+      ? await getStockNews(normalizedSymbol, limit)
       : await fetchNews(limit);
 
     const response: ApiResponse<NewsItem[]> = {
       success: true,
       data: items,
       error: items.length === 0 ? 'No news available right now (live + fallback empty).' : undefined,
-      timestamp: new Date(),
+      timestamp: new Date().toISOString(),
       provenance,
     };
 
@@ -68,7 +89,7 @@ export async function GET(request: NextRequest) {
       success: false,
       error: error instanceof Error ? error.message : 'Internal server error',
       errorCode: 'INTERNAL_ERROR',
-      timestamp: new Date(),
+      timestamp: new Date().toISOString(),
     };
     return NextResponse.json(errorResponse, { status: 500 });
   }

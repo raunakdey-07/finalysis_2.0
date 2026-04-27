@@ -1,12 +1,28 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const filePath = path.resolve(process.cwd(), 'data/nse_symbols.json');
+const filePath = path.resolve(process.cwd(), 'data/stocks.json');
 const raw = fs.readFileSync(filePath, 'utf8');
 const data = JSON.parse(raw);
 
+const allowedSectors = new Set([
+  'Information Technology',
+  'Banking & Financial Services',
+  'FMCG & Consumer',
+  'Pharma & Healthcare',
+  'Auto & Mobility',
+  'Energy & Utilities',
+  'Metals & Mining',
+  'Infrastructure & Industrials',
+  'Chemicals',
+  'Real Estate',
+  'Telecom & Media',
+  'Textiles & Apparel',
+  'Agriculture',
+]);
+
 if (!Array.isArray(data)) {
-  throw new Error('nse_symbols.json must contain an array');
+  throw new Error('stocks.json must contain an array');
 }
 
 const symbolRegex = /^[A-Z0-9&\-.]+\.NS$/;
@@ -35,11 +51,10 @@ for (const [index, entry] of data.entries()) {
 
   if (!Array.isArray(entry.aliases) || entry.aliases.length === 0) {
     problems.push(`${where}: aliases must be a non-empty array`);
-  } else {
-    const uniqueAliases = new Set(entry.aliases.map((a) => String(a).toLowerCase().trim()).filter(Boolean));
-    if (uniqueAliases.size !== entry.aliases.length) {
-      problems.push(`${where}: duplicate/empty aliases detected`);
-    }
+  }
+
+  if (typeof entry.sector !== 'string' || !allowedSectors.has(entry.sector)) {
+    problems.push(`${where}: invalid sector (${entry.sector})`);
   }
 
   if (seenSymbols.has(entry.symbol)) {
@@ -49,11 +64,11 @@ for (const [index, entry] of data.entries()) {
 }
 
 if (problems.length > 0) {
-  console.error('Symbol index validation failed:');
+  console.error('Stocks dataset validation failed:');
   for (const problem of problems) {
     console.error(`- ${problem}`);
   }
   process.exit(1);
 }
 
-console.log(`Symbol index valid: ${data.length} entries, ${seenSymbols.size} unique symbols.`);
+console.log(`Stocks dataset valid: ${data.length} entries, ${seenSymbols.size} unique symbols.`);

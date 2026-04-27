@@ -8,21 +8,9 @@ import { calculateMetrics, getRecommendation } from '@/lib/metrics';
 import { fetchNSEQuote } from '@/lib/nse';
 import { fetchFundamentals } from '@/lib/fundamentals';
 import { rateLimit, getClientId, RATE_LIMITS } from '@/lib/rate-limit';
+import { parseRequiredNseSymbol } from '@/lib/utils/symbol';
 import { ApiResponse, StockFundamentals, StockMetrics } from '@/types';
 
-/**
- * Get mock fundamental data for demonstration
- * 
- * NOTE: This returns MOCK DATA for development/demo purposes only
- * In production, replace with actual data from:
- * 1. Screener.in API (unofficial but widely used)
- * 2. MoneyControl data (web scraping)
- * 3. BSE/NSE annual reports (manual/automated extraction)
- * 4. Commercial data providers
- * 
- * @param symbol - Stock symbol
- * @returns Mock fundamental data
- */
 export async function GET(request: NextRequest) {
   // Rate limiting
   const clientId = getClientId(request.headers);
@@ -30,26 +18,25 @@ export async function GET(request: NextRequest) {
   
   if (!rateLimitResult.success) {
     return NextResponse.json(
-      { success: false, error: `Rate limit exceeded. Try again in ${rateLimitResult.resetIn}s.`, errorCode: 'RATE_LIMITED', timestamp: new Date() },
+      { success: false, error: `Rate limit exceeded. Try again in ${rateLimitResult.resetIn}s.`, errorCode: 'RATE_LIMITED', timestamp: new Date().toISOString() },
       { status: 429, headers: { 'Retry-After': String(rateLimitResult.resetIn) } }
     );
   }
 
   try {
     const searchParams = request.nextUrl.searchParams;
-    const symbol = searchParams.get('symbol');
-
-    if (!symbol) {
+    const parsedSymbol = parseRequiredNseSymbol(searchParams.get('symbol'));
+    if (!parsedSymbol.success) {
       const errorResponse: ApiResponse<null> = {
         success: false,
-        error: 'Symbol parameter is required',
-        errorCode: 'VALIDATION_ERROR',
-        timestamp: new Date(),
+        error: parsedSymbol.error,
+        errorCode: parsedSymbol.errorCode,
+        timestamp: new Date().toISOString(),
       };
       return NextResponse.json(errorResponse, { status: 400 });
     }
 
-    const symbolUpper = symbol.toUpperCase();
+    const symbolUpper = parsedSymbol.symbol;
     
     // Fetch current price
     const { price, provenance: priceProvenance } = await fetchNSEQuote(symbolUpper);
@@ -61,7 +48,7 @@ export async function GET(request: NextRequest) {
         data: null,
         error: `Metrics unavailable for ${symbolUpper}.`,
         errorCode: 'METRICS_UNAVAILABLE',
-        timestamp: new Date(),
+        timestamp: new Date().toISOString(),
         provenance: {
           source: `${priceProvenance.source} + ${fundamentalsProvenance.source}`,
           lastUpdated: priceProvenance.lastUpdated,
@@ -87,7 +74,7 @@ export async function GET(request: NextRequest) {
         recommendation,
         fundamentals,
       },
-      timestamp: new Date(),
+      timestamp: new Date().toISOString(),
       provenance: {
         source: `${priceProvenance.source} + ${fundamentalsProvenance.source}`,
         lastUpdated: priceProvenance.lastUpdated,
@@ -112,7 +99,7 @@ export async function GET(request: NextRequest) {
       success: false,
       error: error instanceof Error ? error.message : 'Internal server error',
       errorCode: 'INTERNAL_ERROR',
-      timestamp: new Date(),
+      timestamp: new Date().toISOString(),
     };
     return NextResponse.json(errorResponse, { status: 500 });
   }

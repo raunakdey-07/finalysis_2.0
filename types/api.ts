@@ -19,8 +19,16 @@ export interface ApiResponse<T> {
   error?: string;
   errorCode?: string;
   message?: string;
-  timestamp: Date;
+  timestamp: string;
   provenance?: Provenance;
+}
+
+export interface StockSearchSuggestion {
+  symbol: string;
+  displaySymbol: string;
+  name: string;
+  sector: string;
+  industry?: string;
 }
 
 export interface ApiError {

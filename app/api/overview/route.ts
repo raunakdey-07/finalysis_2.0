@@ -3,8 +3,23 @@ import { fetchNSEQuote } from '@/lib/nse';
 import { fetchFundamentals } from '@/lib/fundamentals';
 import { getStockNews, getSentimentMix } from '@/lib/sentiment';
 import { calculateMetrics, getRecommendation } from '@/lib/metrics';
+import cache from '@/lib/cache';
 import { rateLimit, getClientId, RATE_LIMITS } from '@/lib/rate-limit';
+import { parseRequiredNseSymbol } from '@/lib/utils/symbol';
 import { ApiResponse, NewsItem, StockFundamentals, StockMetrics, StockPrice } from '@/types';
+
+const OVERVIEW_CACHE_TTL_MS = 30_000;
+const OVERVIEW_CACHE_CONTROL = 'public, max-age=30, s-maxage=60, stale-while-revalidate=300';
+
+function parseLimit(limitParam: string | null, fallback: number, max: number): number {
+  if (!limitParam) return fallback;
+
+  const parsed = Number.parseInt(limitParam, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+
+  return Math.min(parsed, max);
+}
+
 
 type MetricsBundle = StockMetrics & {
   recommendation?: string;
@@ -27,6 +42,19 @@ type OverviewPayload = {
   blendedSentiment: Awaited<ReturnType<typeof getSentimentMix>> | null;
 };
 
+type OverviewCacheEntry = {
+  data: OverviewPayload;
+  provenance: NonNullable<ApiResponse<OverviewPayload>['provenance']>;
+};
+
+function combineConfidenceLevels(
+  levels: Array<import('@/types').Provenance['confidenceLevel'] | undefined>
+): import('@/types').Provenance['confidenceLevel'] {
+  if (levels.some((level) => level === 'derived')) return 'derived';
+  if (levels.some((level) => level === 'medium')) return 'medium';
+  return 'high';
+}
+
 export async function GET(request: NextRequest) {
   const clientId = getClientId(request.headers);
   const rateLimitResult = rateLimit(`overview:${clientId}`, RATE_LIMITS.metrics);
@@ -37,7 +65,7 @@ export async function GET(request: NextRequest) {
         success: false,
         error: `Rate limit exceeded. Try again in ${rateLimitResult.resetIn}s.`,
         errorCode: 'RATE_LIMITED',
-        timestamp: new Date(),
+        timestamp: new Date().toISOString(),
       },
       { status: 429, headers: { 'Retry-After': String(rateLimitResult.resetIn) } }
     );
@@ -45,32 +73,46 @@ export async function GET(request: NextRequest) {
 
   try {
     const searchParams = request.nextUrl.searchParams;
-    const symbol = searchParams.get('symbol');
     const limitParam = searchParams.get('limit');
-    const limit = limitParam ? parseInt(limitParam, 10) : 6;
+    const limit = parseLimit(limitParam, 6, 30);
 
-    if (!symbol) {
+    const parsedSymbol = parseRequiredNseSymbol(searchParams.get('symbol'));
+    if (!parsedSymbol.success) {
       const errorResponse: ApiResponse<null> = {
         success: false,
-        error: 'Symbol parameter is required',
-        errorCode: 'VALIDATION_ERROR',
-        timestamp: new Date(),
+        error: parsedSymbol.error,
+        errorCode: parsedSymbol.errorCode,
+        timestamp: new Date().toISOString(),
       };
+
       return NextResponse.json(errorResponse, { status: 400 });
     }
 
-    const symbolUpper = symbol.toUpperCase().trim();
-    if (!/^[A-Z0-9&\-.]+$/.test(symbolUpper)) {
-      const errorResponse: ApiResponse<null> = {
-        success: false,
-        error: 'Symbol format is invalid',
-        errorCode: 'INVALID_SYMBOL_FORMAT',
-        timestamp: new Date(),
-      };
-      return NextResponse.json(errorResponse, { status: 400 });
-    }
+    const normalizedSymbol = parsedSymbol.symbol;
+    const cacheKey = `overview:${normalizedSymbol}:${limit}`;
+    const cachedOverview = cache.getEntry<OverviewCacheEntry>(cacheKey);
 
-    const normalizedSymbol = symbolUpper.replace(/\.NS$/i, '');
+    if (cachedOverview) {
+      const cachedData = cachedOverview.data;
+      const cachedResponse: ApiResponse<OverviewPayload> = {
+        success: true,
+        data: cachedData.data,
+        timestamp: new Date().toISOString(),
+        provenance: {
+          ...cachedData.provenance,
+          source: `${cachedData.provenance.source} (cached)`,
+          cacheHit: true,
+        },
+      };
+
+      return NextResponse.json(cachedResponse, {
+        status: 200,
+        headers: {
+          'Cache-Control': OVERVIEW_CACHE_CONTROL,
+          'X-Overview-Cache': 'HIT',
+        },
+      });
+    }
 
     const [quoteResult, fundamentalsResult, newsResult, sentimentResult] = await Promise.all([
       fetchNSEQuote(normalizedSymbol),
@@ -112,7 +154,7 @@ export async function GET(request: NextRequest) {
     const response: ApiResponse<OverviewPayload> = {
       success: true,
       data: payload,
-      timestamp: new Date(),
+      timestamp: new Date().toISOString(),
       provenance: {
         source: 'Overview aggregate: NSE + Screener + News blend',
         lastUpdated: new Date().toISOString(),
@@ -123,7 +165,12 @@ export async function GET(request: NextRequest) {
             newsResult.provenance.cacheHit &&
             sentimentResult.provenance.cacheHit
         ),
-        confidenceLevel: quoteResult.provenance.confidenceLevel,
+        confidenceLevel: combineConfidenceLevels([
+          quoteResult.provenance.confidenceLevel,
+          fundamentalsResult.provenance.confidenceLevel,
+          newsResult.provenance.confidenceLevel,
+          sentimentResult.provenance.confidenceLevel,
+        ]),
         warnings: [
           ...(quoteResult.provenance.warnings || []),
           ...(fundamentalsResult.provenance.warnings || []),
@@ -133,10 +180,20 @@ export async function GET(request: NextRequest) {
       },
     };
 
+    cache.set<OverviewCacheEntry>(
+      cacheKey,
+      {
+        data: payload,
+        provenance: response.provenance!,
+      },
+      OVERVIEW_CACHE_TTL_MS
+    );
+
     return NextResponse.json(response, {
       status: 200,
       headers: {
-        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+        'Cache-Control': OVERVIEW_CACHE_CONTROL,
+        'X-Overview-Cache': 'MISS',
       },
     });
   } catch (error) {
@@ -144,7 +201,7 @@ export async function GET(request: NextRequest) {
       success: false,
       error: error instanceof Error ? error.message : 'Internal server error',
       errorCode: 'INTERNAL_ERROR',
-      timestamp: new Date(),
+      timestamp: new Date().toISOString(),
     };
 
     return NextResponse.json(errorResponse, { status: 500 });

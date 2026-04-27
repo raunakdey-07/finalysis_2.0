@@ -18,10 +18,11 @@ No jargon. No overwhelming data. Just clear verdicts for everyday investors.
 
 - **8 Popular Stocks** — ITC, TCS, Reliance, HDFC Bank, Infosys, Airtel, HUL, Asian Paints
 - **Human-Friendly Search** — Search by company name, alias, or ticker (e.g. `Bajaj Housing Finance`, `hdfc`, `ITC.NS`)
+- **Full Local Coverage** — 2300+ active NSE stocks in a local dataset with sector + industry context for filterable discovery
 - **Real-time Prices** — From NSE public endpoints (10min cache)
 - **Graceful Not-Found Handling** — Invalid stocks return clear “Data unavailable” state
 - **Fundamental Data** — Scraped from Screener.in (60-day cache)
-- **News Sentiment** — Google News RSS with keyword-based analysis
+- **News Sentiment** — Curated Google News RSS blend with relevance scoring and professional fallback resources
 - **Mobile Friendly** — Works on any device
 - **Zero Cost** — No paid APIs required
 
@@ -67,6 +68,7 @@ npm run dev:all
 | \`/api/news?symbol=ITC\` | News with sentiment | 30/min |
 | `/api/overview?symbol=ITC` | Aggregated payload (quote + metrics + news + sentiment) | 30/min |
 | \`/api/nse/search?q=hdfc\` | Resolve human query to canonical tickers | 20/min |
+| \`/api/nse/search?q=hdfc&sector=Banking\` | Resolve query within a sector filter | 20/min |
 
 ## Data Sources
 
@@ -83,7 +85,12 @@ Refresh the local NSE symbol index (merged with existing aliases):
 ```bash
 npm run symbols:sync
 npm run symbols:validate
+npm run symbols:enrich-industries
+npm run stocks:build
+npm run stocks:validate
 ```
+
+`symbols:sync` now refreshes active NSE symbols, enriches industries, and auto-rebuilds `data/stocks.json`.
 
 Pre-freeze quality checks:
 
