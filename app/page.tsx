@@ -280,6 +280,8 @@ type NewsState = {
   error: string | null;
 };
 
+type NewsView = "research" | "live";
+
 type BlendedSentimentState = {
   market: { sentiment: string; score: number; newsCount: number };
   sector: { name: string; key: string; sentiment: string; score: number; newsCount: number } | null;
@@ -318,12 +320,20 @@ export default function Page() {
   });
   const [loadingMetrics, setLoadingMetrics] = useState<boolean>(true);
 
-  const [{ items: news, provenance: newsProv }, setNewsState] = useState<NewsState>({
+  const [{ items: researchNews, provenance: researchNewsProv }, setResearchNewsState] = useState<NewsState>({
     items: [],
     provenance: null,
     error: null,
   });
-  const [loadingNews, setLoadingNews] = useState<boolean>(true);
+  const [{ items: liveNews, provenance: liveNewsProv }, setLiveNewsState] = useState<NewsState>({
+    items: [],
+    provenance: null,
+    error: null,
+  });
+  const [loadingResearchNews, setLoadingResearchNews] = useState<boolean>(true);
+  const [loadingLiveNews, setLoadingLiveNews] = useState<boolean>(true);
+  const [liveNewsReady, setLiveNewsReady] = useState<boolean>(false);
+  const [activeNewsView, setActiveNewsView] = useState<NewsView>("research");
   const [blendedSentiment, setBlendedSentiment] = useState<BlendedSentimentState | null>(null);
 
   useEffect(() => {
@@ -338,10 +348,9 @@ export default function Page() {
     setSymbolInput(normalized);
   }, []);
 
-  // Fetch critical price/metrics first, then let news trail behind.
+  // Fetch critical price/metrics alongside fast research links, then hydrate live news in the background.
   useEffect(() => {
     let cancelled = false;
-    let newsTimer: number | null = null;
 
     // Clean symbol for API - remove .NS suffix if present
     const apiSymbol = symbol.replace(/\.NS$/i, "");
@@ -349,8 +358,6 @@ export default function Page() {
     async function loadCoreData() {
       setLoadingQuote(true);
       setLoadingMetrics(true);
-      setLoadingNews(true);
-      setNewsState({ items: [], provenance: null, error: null });
       setBlendedSentiment(null);
 
       try {
@@ -389,46 +396,75 @@ export default function Page() {
       }
     }
 
-    async function loadNews() {
+    async function loadResearchNews() {
       try {
-        const res = await fetch(`/api/news?symbol=${encodeURIComponent(apiSymbol)}&limit=6`);
+        const res = await fetch(`/api/news?symbol=${encodeURIComponent(apiSymbol)}&limit=5&mode=fast`);
         const json: ApiResponse<NewsItem[]> = await res.json();
 
         if (cancelled) return;
 
         if (!json.success || !json.data) {
-          setNewsState({ items: [], provenance: json.provenance ?? null, error: json.error ?? "Unable to fetch news" });
+          setResearchNewsState({ items: [], provenance: json.provenance ?? null, error: json.error ?? "Unable to fetch research links" });
           return;
         }
 
-        setNewsState({
+        setResearchNewsState({
           items: json.data ?? [],
           provenance: json.provenance ?? null,
           error: json.error ?? null,
         });
       } catch (err) {
         if (cancelled) return;
-        const fallbackError = err instanceof Error ? err.message : "Unable to fetch news";
-        setNewsState({ items: [], provenance: null, error: fallbackError });
+        const fallbackError = err instanceof Error ? err.message : "Unable to fetch research links";
+        setResearchNewsState({ items: [], provenance: null, error: fallbackError });
       } finally {
         if (!cancelled) {
-          setLoadingNews(false);
+          setLoadingResearchNews(false);
         }
       }
     }
 
-    void loadCoreData().finally(() => {
-      if (cancelled) return;
-      newsTimer = window.setTimeout(() => {
-        void loadNews();
-      }, 180);
-    });
+    async function loadLiveNews() {
+      try {
+        const res = await fetch(`/api/news?symbol=${encodeURIComponent(apiSymbol)}&limit=6&mode=live`);
+        const json: ApiResponse<NewsItem[]> = await res.json();
+
+        if (cancelled) return;
+
+        if (!json.success || !json.data) {
+          setLiveNewsState({ items: [], provenance: json.provenance ?? null, error: json.error ?? "Unable to fetch live news" });
+          return;
+        }
+
+        setLiveNewsState({
+          items: json.data ?? [],
+          provenance: json.provenance ?? null,
+          error: json.error ?? null,
+        });
+      } catch (err) {
+        if (cancelled) return;
+        const fallbackError = err instanceof Error ? err.message : "Unable to fetch live news";
+        setLiveNewsState({ items: [], provenance: null, error: fallbackError });
+      } finally {
+        if (!cancelled) {
+          setLoadingLiveNews(false);
+          setLiveNewsReady(true);
+        }
+      }
+    }
+
+    setLoadingResearchNews(true);
+    setLoadingLiveNews(true);
+    setLiveNewsReady(false);
+    setActiveNewsView("research");
+    setResearchNewsState({ items: [], provenance: null, error: null });
+    setLiveNewsState({ items: [], provenance: null, error: null });
+    void loadCoreData();
+    void loadResearchNews();
+    void loadLiveNews();
 
     return () => {
       cancelled = true;
-      if (newsTimer !== null) {
-        window.clearTimeout(newsTimer);
-      }
     };
   }, [symbol]);
 
@@ -447,14 +483,14 @@ export default function Page() {
     : "recently";
 
   const avgNewsSentiment = useMemo(() => {
-    if (!news || news.length === 0) return 0;
-    const total = news.reduce((acc, item) => {
+    if (!liveNews || liveNews.length === 0) return 0;
+    const total = liveNews.reduce((acc, item) => {
       if (typeof item.sentimentScore === "number") return acc + item.sentimentScore;
       if (item.sentiment) return acc + SENTIMENT_WEIGHT[item.sentiment];
       return acc;
     }, 0);
-    return total / news.length;
-  }, [news]);
+    return total / liveNews.length;
+  }, [liveNews]);
 
   const effectiveSentimentScore = useMemo(() => {
     if (!blendedSentiment) return avgNewsSentiment;
@@ -994,15 +1030,25 @@ export default function Page() {
         <AnalysisCards
           loadingMetrics={loadingMetrics}
           loadingQuote={loadingQuote}
-          loadingNews={loadingNews}
+          loadingNews={loadingLiveNews}
           metrics={metrics}
           sentimentLabel={sentimentLabel}
           stockDataUnavailable={stockDataUnavailable}
           effectiveChange={effectiveChange}
-          newsCount={news.length}
+          newsCount={liveNews.length}
         />
 
-        <NewsSection loadingNews={loadingNews} news={news} newsProv={newsProv} />
+        <NewsSection
+          activeView={activeNewsView}
+          loadingResearchNews={loadingResearchNews}
+          loadingLiveNews={loadingLiveNews}
+          liveNewsReady={liveNewsReady}
+          researchNews={researchNews}
+          liveNews={liveNews}
+          researchNewsProv={researchNewsProv}
+          liveNewsProv={liveNewsProv}
+          onViewChange={setActiveNewsView}
+        />
 
           {/* Footer - minimal, trustworthy */}
           <footer className="border-t border-stone-200 pt-8 text-center">

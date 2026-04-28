@@ -9,16 +9,19 @@ const GNEWS_API_KEY = process.env.GNEWS_API_KEY; // optional free tier
 const GOOGLE_NEWS_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)';
 const GOOGLE_NEWS_MIN_ITEMS = 18;
 const NEWS_MIN_TRUST_SCORE = 0.5;
-const STOCK_NEWS_MIN_RELEVANCE_SCORE = 5;
+const FAST_NEWS_TIMEOUT_MS = 2500;
+const GOOGLE_NEWS_QUERY_LIMIT = 4;
+const GOOGLE_NEWS_PARALLELISM = 4;
 const FUTURE_NEWS_TOLERANCE_MS = 5 * 60 * 1000;
-const GOOGLE_NEWS_TIMEOUT_MS = 12_000;
-const GNEWS_TIMEOUT_MS = 12_000;
+const GOOGLE_NEWS_TIMEOUT_MS = 6_500;
+const GNEWS_TIMEOUT_MS = 7_500;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const GOOGLE_NEWS_MAX_AGE_MS = 21 * DAY_MS;
 const GNEWS_MAX_AGE_MS = 30 * DAY_MS;
 const MARKET_NEWS_MAX_AGE_MS = 14 * DAY_MS;
 const SECTOR_NEWS_MAX_AGE_MS = 21 * DAY_MS;
 const STOCK_NEWS_MAX_AGE_MS = 30 * DAY_MS;
+const STOCK_NEWS_MIN_RELEVANCE_SCORE = 6;
 
 const CURATED_NEWS_SITE_BATCHES: string[][] = [
   ['moneycontrol.com', 'livemint.com', 'economictimes.indiatimes.com', 'business-standard.com'],
@@ -60,6 +63,31 @@ const NEGATIVE_KEYWORDS = ['loss', 'decline', 'fall', 'drop', 'bearish', 'negati
 
 const IMPORTANCE_KEYWORDS = [
   'results', 'q1', 'q2', 'q3', 'q4', 'quarter', 'earnings', 'board meeting', 'filing', 'sebi', 'regulatory', 'acquisition', 'merger', 'm&a', 'capex', 'investment', 'order win', 'guidance', 'policy', 'government', 'notification', 'budget', 'tariff', 'duty', 'subsidy', 'tax', 'ministry', 'rbi', 'pib', 'dgft', 'cbic', 'mca'
+];
+
+const STOCK_NEWS_NOISE_KEYWORDS = [
+  'exam',
+  'exams',
+  'admit card',
+  'answer key',
+  'question paper',
+  'syllabus',
+  'board exam',
+  'university',
+  'college',
+  'recruitment',
+  'vacancy',
+  'admission',
+  'scholarship',
+  'result',
+  'results',
+  'education',
+  'school',
+  'sports',
+  'cricket',
+  'movie',
+  'cinema',
+  'weather',
 ];
 
 type SentimentLabel = 'positive' | 'negative' | 'neutral';
@@ -281,7 +309,22 @@ function buildGoogleNewsQueryPlan(query: string): string[] {
   );
 
   const scopedQueries = CURATED_NEWS_SITE_BATCHES.map((batch) => buildSiteScopedQuery(normalized, batch));
-  return [...policyScopedQueries, ...policyVariants, ...scopedQueries, normalized];
+  return [...policyScopedQueries, ...policyVariants, ...scopedQueries, normalized].slice(0, GOOGLE_NEWS_QUERY_LIMIT);
+}
+
+async function fetchGoogleNewsQuery(query: string, maxAgeMs: number, timeoutMs: number): Promise<NewsItem[]> {
+  const encoded = encodeURIComponent(query);
+  const url = `https://${GOOGLE_NEWS_HOST}/rss/search?q=${encoded}&hl=en-IN&gl=IN&ceid=IN:en`;
+  const response = await fetchWithTimeout(url, {
+    headers: { 'User-Agent': GOOGLE_NEWS_USER_AGENT },
+  }, timeoutMs);
+
+  if (!response.ok) {
+    throw new Error(`Google News RSS error: ${response.status}`);
+  }
+
+  const xml = await response.text();
+  return filterRecentNewsItems(parseRSSFeed(xml, 'Google News'), maxAgeMs);
 }
 
 function normalizeCompanySearchName(companyName: string): string {
@@ -581,31 +624,27 @@ async function fetchGoogleNews(query: string, maxAgeMs: number = GOOGLE_NEWS_MAX
   const errors: string[] = [];
   let aggregated: NewsItem[] = [];
 
-  for (const plannedQuery of queryPlan) {
-    const encoded = encodeURIComponent(plannedQuery);
-    const url = `https://${GOOGLE_NEWS_HOST}/rss/search?q=${encoded}&hl=en-IN&gl=IN&ceid=IN:en`;
+  for (let index = 0; index < queryPlan.length; index += GOOGLE_NEWS_PARALLELISM) {
+    const batch = queryPlan.slice(index, index + GOOGLE_NEWS_PARALLELISM);
+    const batchResults = await Promise.allSettled(
+      batch.map(async (plannedQuery) => {
+        return fetchGoogleNewsQuery(plannedQuery, maxAgeMs, GOOGLE_NEWS_TIMEOUT_MS);
+      })
+    );
 
-    try {
-      const response = await fetchWithTimeout(url, {
-        headers: { 'User-Agent': GOOGLE_NEWS_USER_AGENT },
-      }, GOOGLE_NEWS_TIMEOUT_MS);
-
-      if (!response.ok) {
-        errors.push(`Google News RSS error: ${response.status}`);
-        continue;
+    for (const result of batchResults) {
+      if (result.status === 'fulfilled') {
+        const parsed = result.value;
+        if (parsed.length > 0) {
+          aggregated = uniqueNewsItems([...aggregated, ...parsed]);
+        }
+      } else {
+        errors.push(result.reason instanceof Error ? result.reason.message : String(result.reason));
       }
+    }
 
-      const xml = await response.text();
-      const parsed = filterRecentNewsItems(parseRSSFeed(xml, 'Google News'), maxAgeMs);
-      if (parsed.length > 0) {
-        aggregated = uniqueNewsItems([...aggregated, ...parsed]);
-      }
-
-      if (aggregated.length >= GOOGLE_NEWS_MIN_ITEMS) {
-        break;
-      }
-    } catch (err) {
-      errors.push(err instanceof Error ? err.message : `Google News RSS failed for query: ${plannedQuery}`);
+    if (aggregated.length >= GOOGLE_NEWS_MIN_ITEMS) {
+      break;
     }
   }
 
@@ -616,7 +655,7 @@ async function fetchGoogleNews(query: string, maxAgeMs: number = GOOGLE_NEWS_MAX
   return aggregated;
 }
 
-async function fetchGNews(query: string, maxAgeMs: number = GNEWS_MAX_AGE_MS): Promise<NewsItem[]> {
+async function fetchGNews(query: string, maxAgeMs: number = GNEWS_MAX_AGE_MS, timeoutMs: number = GNEWS_TIMEOUT_MS): Promise<NewsItem[]> {
   if (!GNEWS_API_KEY) {
     throw new Error('GNEWS_API_KEY missing');
   }
@@ -624,7 +663,7 @@ async function fetchGNews(query: string, maxAgeMs: number = GNEWS_MAX_AGE_MS): P
   const url = `https://gnews.io/api/v4/search?q=${encoded}&lang=en&country=in&max=20&apikey=${GNEWS_API_KEY}`;
   const response = await fetchWithTimeout(url, {
     headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
-  }, GNEWS_TIMEOUT_MS);
+  }, timeoutMs);
   if (!response.ok) throw new Error(`GNews error: ${response.status}`);
   let data: { articles?: Array<{ title?: string; description?: string; url?: string; publishedAt?: string }> };
   try {
@@ -766,13 +805,13 @@ function buildFallbackNewsItems(params: {
   ];
 }
 
-function getFallbackProvenanceSource(params: { symbol?: string; topic?: string; blended?: boolean }): string {
+function getFallbackProvenanceSource(params: { symbol?: string; topic?: string }): string {
   const resources = params.symbol
-    ? 'NSE India, Screener.in, and BSE India'
+    ? 'Yahoo Finance, Screener.in, NSE India, and BSE India'
     : 'NSE India, BSE India, and Moneycontrol';
 
-  return params.blended
-    ? `Google News RSS + fallback resources: ${resources}`
+  return params.symbol
+    ? `Company research links: ${resources}`
     : `Fallback resources: ${resources}`;
 }
 
@@ -867,6 +906,11 @@ function hasHighStockRelevance(item: NewsItem, symbol: string, companyName?: str
   const symbolMentioned = text.includes(symbolKey);
   const companyMentioned = companyTokens.some((token) => text.includes(token));
   const signalMentioned = STOCK_NEWS_SIGNAL_KEYWORDS.some((keyword) => text.includes(keyword));
+  const noiseMentioned = STOCK_NEWS_NOISE_KEYWORDS.some((keyword) => text.includes(keyword));
+
+  if (noiseMentioned && !(symbolMentioned || companyMentioned || signalMentioned)) {
+    return false;
+  }
 
   return (
     (symbolMentioned || companyMentioned || signalMentioned) &&
@@ -884,6 +928,71 @@ function rankStockNewsItems(items: NewsItem[], symbol: string, companyName?: str
 
 function sortAndLimit(items: NewsItem[], limit: number, maxAgeMs: number): NewsItem[] {
   return rankNewsItems(items, maxAgeMs).slice(0, limit);
+}
+
+function buildCompanyResearchItems(symbol: string, companyName?: string): NewsItem[] {
+  const normalizedSymbol = symbol.replace(/\.NS$/i, '').trim().toUpperCase();
+  const displayName = companyName || normalizedSymbol;
+  const companyLabel = companyName ? ` for ${companyName}` : '';
+  const now = new Date();
+
+  return [
+    {
+      id: `research_${normalizedSymbol}_screener`,
+      title: `${displayName}: Screener.in company page`,
+      description: `Check financials, ratios, and recent statement history on Screener.in${companyLabel}.`,
+      link: `https://www.screener.in/company/${normalizedSymbol}/`,
+      pubDate: now,
+      source: 'Screener.in',
+      sentiment: 'neutral',
+      sentimentScore: 0,
+      importance: 'high',
+    },
+    {
+      id: `research_${normalizedSymbol}_yahoo_finance`,
+      title: `${displayName}: Yahoo Finance research`,
+      description: `Review price history, chart context, and market headlines on Yahoo Finance${companyLabel}.`,
+      link: `https://finance.yahoo.com/quote/${normalizedSymbol}.NS/`,
+      pubDate: now,
+      source: 'Yahoo Finance',
+      sentiment: 'neutral',
+      sentimentScore: 0,
+      importance: 'medium',
+    },
+    {
+      id: `research_${normalizedSymbol}_nse_filings`,
+      title: `${displayName}: NSE corporate filings`,
+      description: `Open official exchange announcements, disclosures, and filings${companyLabel}.`,
+      link: 'https://www.nseindia.com/companies-listing/corporate-filings-announcements',
+      pubDate: now,
+      source: 'NSE India',
+      sentiment: 'neutral',
+      sentimentScore: 0,
+      importance: 'medium',
+    },
+    {
+      id: `research_${normalizedSymbol}_bse_announcements`,
+      title: `${displayName}: BSE announcements`,
+      description: `Cross-check symbol-filtered notices and exchange disclosures on BSE${companyLabel}.`,
+      link: `https://www.bseindia.com/markets/MarketInfo/NoticesCirculars?id=0&txtscripcd=${normalizedSymbol}&pagecont=&subject=`,
+      pubDate: now,
+      source: 'BSE India',
+      sentiment: 'neutral',
+      sentimentScore: 0,
+      importance: 'medium',
+    },
+    {
+      id: `research_${normalizedSymbol}_nse_quote`,
+      title: `${displayName}: NSE quote page`,
+      description: `Open the live quote page for price, volume, and basic market context${companyLabel}.`,
+      link: `https://www.nseindia.com/get-quotes/equity?symbol=${normalizedSymbol}`,
+      pubDate: now,
+      source: 'NSE India',
+      sentiment: 'neutral',
+      sentimentScore: 0,
+      importance: 'medium',
+    },
+  ];
 }
 
 export interface NewsResult {
@@ -1080,6 +1189,67 @@ export async function fetchNews(limit: number = 20): Promise<NewsResult> {
   };
 }
 
+export async function fetchNewsPreview(limit: number = 20): Promise<NewsResult> {
+  const safeLimit = normalizeLimit(limit, 20, 50);
+  const cacheKey = 'news_all_preview';
+  const cached = cache.getEntry<NewsItem[]>(cacheKey);
+  if (cached) {
+    return {
+      items: sortAndLimit(cached.data, safeLimit, MARKET_NEWS_MAX_AGE_MS),
+      provenance: buildProvenance({
+        source: 'Google News RSS (cached fast mode)',
+        cacheHit: true,
+        cacheTTL: '8h',
+        lastUpdated: new Date(cached.timestamp),
+        confidence: 'medium',
+      }),
+    };
+  }
+
+  let aggregated: NewsItem[] = [];
+  let usedFallbackResources = false;
+  let usedGNewsFallback = false;
+
+  try {
+    aggregated = await fetchGoogleNewsQuery('indian markets nse bse earnings', MARKET_NEWS_MAX_AGE_MS, FAST_NEWS_TIMEOUT_MS);
+  } catch {
+    aggregated = [];
+  }
+
+  if (aggregated.length === 0 && GNEWS_API_KEY) {
+    try {
+      aggregated = await fetchGNews('indian markets nse bse earnings', MARKET_NEWS_MAX_AGE_MS, FAST_NEWS_TIMEOUT_MS);
+      usedGNewsFallback = aggregated.length > 0;
+    } catch {
+      aggregated = [];
+    }
+  }
+
+  if (aggregated.length === 0) {
+    usedFallbackResources = true;
+    aggregated = buildFallbackNewsItems({ topic: 'Market' });
+  }
+
+  if (aggregated.length > 0) {
+    cache.set(cacheKey, aggregated, NEWS_TTL_MS);
+  }
+
+  return {
+    items: sortAndLimit(aggregated, safeLimit, MARKET_NEWS_MAX_AGE_MS),
+    provenance: buildProvenance({
+      source: usedFallbackResources
+        ? getFallbackProvenanceSource({ topic: 'Market' })
+        : usedGNewsFallback
+          ? 'Google News RSS + GNews fallback (fast mode)'
+          : 'Google News RSS (fast mode)',
+      cacheHit: false,
+      cacheTTL: '8h',
+      lastUpdated: new Date(),
+      confidence: usedFallbackResources ? 'derived' : usedGNewsFallback ? 'medium' : 'high',
+    }),
+  };
+}
+
 export async function getStockNews(symbol: string, limit: number = 10): Promise<NewsResult> {
   const safeLimit = normalizeLimit(limit, 10, 50);
   const normalizedSymbol = symbol.replace(/\.NS$/i, '').trim().toUpperCase();
@@ -1103,20 +1273,15 @@ export async function getStockNews(symbol: string, limit: number = 10): Promise<
   const companyEntry = getStockDirectoryEntry(normalizedSymbol);
   const companyName = companyEntry?.name;
   const isKnownSymbol = Boolean(companyEntry);
-  let usedFallbackResources = false;
-  let usedMarketFallbackFeed = false;
-  let appendedFallbackResources = false;
   let usedGNewsFallback = false;
 
   if (!isKnownSymbol) {
-    usedFallbackResources = true;
-    const safeResources = buildFallbackNewsItems({ topic: 'Market' });
-    warnings.push(`Symbol ${normalizedSymbol} is outside the local NSE universe; showing trusted market resources.`);
+    warnings.push(`Symbol ${normalizedSymbol} is outside the local NSE universe; no live articles available.`);
 
     return {
-        items: safeResources.slice(0, safeLimit),
+      items: [],
       provenance: buildProvenance({
-        source: getFallbackProvenanceSource({ symbol: normalizedSymbol }),
+        source: 'Google News RSS',
         cacheHit: false,
         cacheTTL: '8h',
         lastUpdated: new Date(),
@@ -1130,17 +1295,16 @@ export async function getStockNews(symbol: string, limit: number = 10): Promise<
 
   for (const query of queries) {
     try {
-      const items = await fetchGoogleNews(query, STOCK_NEWS_MAX_AGE_MS);
+      const items = await fetchGoogleNewsQuery(query, STOCK_NEWS_MAX_AGE_MS, GOOGLE_NEWS_TIMEOUT_MS);
       if (items.length > 0) {
         aggregated = uniqueNewsItems([...aggregated, ...items]);
       }
-
-      // Keep the search bounded while still allowing broader source coverage.
-      if (aggregated.length >= Math.max(safeLimit * 2, 20)) {
-        break;
-      }
     } catch (err) {
       warnings.push(err instanceof Error ? err.message : `Google News RSS failed for query: ${query}`);
+    }
+
+    if (aggregated.length >= GOOGLE_NEWS_MIN_ITEMS) {
+      break;
     }
   }
 
@@ -1155,43 +1319,14 @@ export async function getStockNews(symbol: string, limit: number = 10): Promise<
   }
 
   if (aggregated.length === 0) {
-    try {
-      const marketFallback = await fetchNews(Math.max(safeLimit, 10));
-      aggregated = uniqueNewsItems(marketFallback.items);
-      usedMarketFallbackFeed = true;
-      warnings.push('Stock-specific RSS sparse; served broader market feed fallback.');
-    } catch {
-      // If market fallback also fails, use deterministic resource links.
-    }
-  }
-
-  if (aggregated.length > 0) {
-    const relevantItems = rankStockNewsItems(aggregated, normalizedSymbol, companyName).filter((item) =>
+    warnings.push('Stock-specific RSS was empty; no live articles matched this company.');
+  } else {
+    aggregated = rankStockNewsItems(aggregated, normalizedSymbol, companyName).filter((item) =>
       hasHighStockRelevance(item, normalizedSymbol, companyName)
-    );
+    ).slice(0, safeLimit);
 
-    if (relevantItems.length > 0) {
-      aggregated = relevantItems;
-    } else if (!usedMarketFallbackFeed) {
-      aggregated = [];
-      warnings.push('Live stock RSS items were low relevance; switching to trusted fallback resources.');
-    }
-  }
-
-  if (aggregated.length === 0) {
-    usedFallbackResources = true;
-    aggregated = buildFallbackNewsItems({ symbol: normalizedSymbol, companyName });
-    warnings.push('Live stock RSS was empty; using fallback investor resources.');
-  }
-
-  if (!usedFallbackResources && aggregated.length < safeLimit) {
-    const fallbackResources = buildFallbackNewsItems({ symbol: normalizedSymbol, companyName });
-    const blended = uniqueNewsItems([...aggregated, ...fallbackResources]);
-
-    if (blended.length > aggregated.length) {
-      aggregated = blended;
-      appendedFallbackResources = true;
-      warnings.push('Stock RSS depth was limited; appended verified filing resources.');
+    if (aggregated.length === 0) {
+      warnings.push('Live stock RSS items were not relevant enough for display.');
     }
   }
 
@@ -1204,24 +1339,123 @@ export async function getStockNews(symbol: string, limit: number = 10): Promise<
   return {
     items: rankedItems.slice(0, safeLimit),
     provenance: buildProvenance({
-      source: usedFallbackResources
-        ? getFallbackProvenanceSource({ symbol: normalizedSymbol })
-        : usedGNewsFallback
+      source: usedGNewsFallback
           ? 'Google News RSS + GNews fallback'
-        : appendedFallbackResources
-          ? getFallbackProvenanceSource({ symbol: normalizedSymbol, blended: true })
-          : usedMarketFallbackFeed
-            ? 'Google News RSS (market fallback)'
-            : 'Google News RSS',
+          : 'Google News RSS',
       cacheHit: false,
       cacheTTL: '8h',
       lastUpdated: new Date(),
-      confidence: usedFallbackResources
-        ? 'derived'
-        : usedMarketFallbackFeed || appendedFallbackResources || usedGNewsFallback
+      confidence: usedGNewsFallback
           ? 'medium'
-          : 'high',
+          : aggregated.length > 0
+            ? 'high'
+            : 'derived',
       warnings: warnings.length ? warnings : undefined,
+    }),
+  };
+}
+
+export async function getStockNewsPreview(symbol: string, limit: number = 10): Promise<NewsResult> {
+  const safeLimit = normalizeLimit(limit, 10, 50);
+  const normalizedSymbol = symbol.replace(/\.NS$/i, '').trim().toUpperCase();
+  const cacheKey = `news_v6_${normalizedSymbol}_preview`;
+  const companyName = getStockDirectoryEntry(normalizedSymbol)?.name;
+  const cached = cache.getEntry<NewsItem[]>(cacheKey);
+  if (cached) {
+    return {
+      items: buildCompanyResearchItems(normalizedSymbol, companyName).slice(0, safeLimit),
+      provenance: buildProvenance({
+        source: 'Company research links (cached)',
+        cacheHit: true,
+        cacheTTL: '8h',
+        lastUpdated: new Date(cached.timestamp),
+        confidence: 'medium',
+      }),
+    };
+  }
+
+  const companyResearchItems = buildCompanyResearchItems(normalizedSymbol, companyName).slice(0, safeLimit);
+
+  if (companyResearchItems.length > 0) {
+    cache.set(cacheKey, companyResearchItems, NEWS_TTL_MS);
+  }
+
+  return {
+    items: companyResearchItems,
+    provenance: buildProvenance({
+      source: 'Company research links (fast mode)',
+      cacheHit: false,
+      cacheTTL: '8h',
+      lastUpdated: new Date(),
+      confidence: 'derived',
+    }),
+  };
+}
+
+export async function getStockNewsLive(symbol: string, limit: number = 10): Promise<NewsResult> {
+  const safeLimit = normalizeLimit(limit, 10, 50);
+  const normalizedSymbol = symbol.replace(/\.NS$/i, '').trim().toUpperCase();
+  const cacheKey = `news_v6_${normalizedSymbol}_live`;
+  const cached = cache.getEntry<NewsItem[]>(cacheKey);
+
+  if (cached) {
+    return {
+      items: rankNewsItems(cached.data, STOCK_NEWS_MAX_AGE_MS).slice(0, safeLimit),
+      provenance: buildProvenance({
+        source: 'Google News RSS (cached live)',
+        cacheHit: true,
+        cacheTTL: '8h',
+        lastUpdated: new Date(cached.timestamp),
+        confidence: 'medium',
+      }),
+    };
+  }
+
+  const companyEntry = getStockDirectoryEntry(normalizedSymbol);
+  const companyName = companyEntry?.name;
+  if (!companyEntry) {
+    return {
+      items: [],
+      provenance: buildProvenance({
+        source: 'Google News RSS',
+        cacheHit: false,
+        cacheTTL: '8h',
+        lastUpdated: new Date(),
+        confidence: 'derived',
+        warnings: [`Symbol ${normalizedSymbol} is outside the local NSE universe; no live articles available.`],
+      }),
+    };
+  }
+
+  const primaryQuery = buildStockNewsQueries(normalizedSymbol)[0] ?? `${normalizedSymbol} india stock news`;
+  let aggregated: NewsItem[] = [];
+
+  try {
+    aggregated = await fetchGoogleNewsQuery(primaryQuery, STOCK_NEWS_MAX_AGE_MS, FAST_NEWS_TIMEOUT_MS);
+  } catch {
+    aggregated = [];
+  }
+
+  if (aggregated.length > 0) {
+    aggregated = rankStockNewsItems(aggregated, normalizedSymbol, companyName).filter((item) =>
+      hasHighStockRelevance(item, normalizedSymbol, companyName)
+    );
+  }
+
+  const rankedItems = aggregated.slice(0, safeLimit);
+
+  if (rankedItems.length > 0) {
+    cache.set(cacheKey, rankedItems, NEWS_TTL_MS);
+  }
+
+  return {
+    items: rankedItems,
+    provenance: buildProvenance({
+      source: 'Google News RSS (live)',
+      cacheHit: false,
+      cacheTTL: '8h',
+      lastUpdated: new Date(),
+      confidence: rankedItems.length > 0 ? 'high' : 'derived',
     }),
   };
 }

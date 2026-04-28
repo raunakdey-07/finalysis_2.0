@@ -40,24 +40,33 @@ function NewsSkeleton() {
 }
 
 type NewsSectionProps = {
-  loadingNews: boolean;
-  news: NewsItem[];
-  newsProv: Provenance | null;
+  activeView: "research" | "live";
+  loadingResearchNews: boolean;
+  loadingLiveNews: boolean;
+  liveNewsReady: boolean;
+  researchNews: NewsItem[];
+  liveNews: NewsItem[];
+  researchNewsProv: Provenance | null;
+  liveNewsProv: Provenance | null;
+  onViewChange: (view: "research" | "live") => void;
 };
 
-export default function NewsSection({ loadingNews, news, newsProv }: NewsSectionProps) {
-  const sourceLabel = newsProv?.source ?? "Google News RSS";
-  const usingFallbackResources = sourceLabel.toLowerCase().includes("fallback resources");
-  const displaySourceLabel = sourceLabel
-    .replace(/^Fallback resources:\s*/i, "")
-    .replace(/^Google News RSS \+ fallback resources:\s*/i, "Google News RSS + ");
-  const feedStateLabel = usingFallbackResources
-    ? "Backup sources"
-    : sourceLabel.toLowerCase().includes("gnews fallback")
-      ? "Live + backup"
-      : newsProv?.cacheHit
-        ? "Cached live feed"
-        : "Live feed";
+export default function NewsSection({
+  activeView,
+  loadingResearchNews,
+  loadingLiveNews,
+  liveNewsReady,
+  researchNews,
+  liveNews,
+  researchNewsProv,
+  liveNewsProv,
+  onViewChange,
+}: NewsSectionProps) {
+  const activeNews = activeView === "research" ? researchNews : liveNews;
+  const isResearchView = activeView === "research";
+  const liveButtonDisabled = !liveNewsReady;
+  const isLiveLoading = activeView === "live" && loadingLiveNews && !liveNewsReady;
+  const activeProvenance = activeView === "research" ? researchNewsProv : liveNewsProv;
 
   return (
     <section className="mb-12">
@@ -68,55 +77,79 @@ export default function NewsSection({ loadingNews, news, newsProv }: NewsSection
       </div>
 
       <div className="rounded-xl bg-white p-5 shadow-sm">
-        {newsProv ? (
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs text-stone-500">News aggregated from {displaySourceLabel} for sentiment analysis</p>
-            <span
-              className={`rounded-full border px-2 py-1 text-[11px] font-medium ${
-                usingFallbackResources
-                  ? "border-amber-200 bg-amber-50 text-amber-700"
-                  : newsProv.cacheHit
-                    ? "border-stone-200 bg-stone-50 text-stone-600"
-                    : "border-emerald-200 bg-emerald-50 text-emerald-700"
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="inline-flex rounded-lg border border-stone-200 bg-stone-50 p-1">
+            <button
+              type="button"
+              onClick={() => onViewChange("research")}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                isResearchView ? "bg-white text-stone-900 shadow-sm" : "text-stone-500 hover:text-stone-800"
               }`}
             >
-              {feedStateLabel}
-            </span>
+              Quick research
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (liveNewsReady) {
+                  onViewChange("live");
+                }
+              }}
+              disabled={liveButtonDisabled}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                liveButtonDisabled
+                  ? "cursor-not-allowed bg-stone-100 text-stone-400 opacity-70"
+                  : !isResearchView
+                    ? "bg-white text-stone-900 shadow-sm"
+                    : "text-stone-500 hover:text-stone-800"
+              }`}
+            >
+              News sentiment
+            </button>
           </div>
-        ) : null}
-        {usingFallbackResources ? (
-          <p className="mb-3 rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-xs text-stone-600">
-            Live RSS is thin right now. Showing backup sources so research never stalls.
-          </p>
-        ) : null}
-        {loadingNews ? (
+        </div>
+
+        {isResearchView && loadingResearchNews && activeNews.length === 0 ? (
           <NewsSkeleton />
-        ) : news.length === 0 ? (
-          <p className="py-6 text-center text-sm text-stone-500">No recent coverage found for this stock.</p>
+        ) : activeNews.length === 0 ? (
+          <p className="py-6 text-center text-sm text-stone-500">
+            {isResearchView ? "No research links available right now." : "No live coverage found right now."}
+          </p>
         ) : (
-          <div className="divide-y divide-stone-100">
-            {news.slice(0, 5).map((item) => {
-              const sentiment = item.sentiment ?? "neutral";
-              return (
-                <a
-                  key={item.id}
-                  href={item.link}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="group flex items-start gap-4 py-3 first:pt-0 last:pb-0"
-                >
-                  <span className={`mt-2 h-1.5 w-1.5 flex-shrink-0 rounded-full ${SENTIMENT_DOT[sentiment]}`} />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm leading-relaxed text-stone-700 group-hover:text-stone-900">{item.title}</p>
-                    <p className="mt-1 text-xs text-stone-500">
-                      <span className="font-medium">{item.source}</span> · {relativeTime(new Date(item.pubDate))}
-                    </p>
-                  </div>
-                </a>
-              );
-            })}
+          <div className="relative">
+            {isLiveLoading ? (
+              <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-white/50">
+                <p className="text-xs font-medium uppercase tracking-widest text-stone-500">Loading live articles</p>
+              </div>
+            ) : null}
+            <div className={`divide-y divide-stone-100 ${isLiveLoading ? "pointer-events-none select-none opacity-75" : ""}`}>
+              {activeNews.slice(0, 5).map((item) => {
+                const sentiment = item.sentiment ?? "neutral";
+                return (
+                  <a
+                    key={item.id}
+                    href={item.link}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="group flex items-start gap-4 py-3 first:pt-0 last:pb-0"
+                  >
+                    <span className={`mt-2 h-1.5 w-1.5 flex-shrink-0 rounded-full ${SENTIMENT_DOT[sentiment]}`} />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm leading-relaxed text-stone-700 group-hover:text-stone-900">{item.title}</p>
+                      <p className="mt-1 text-xs text-stone-500">
+                        <span className="font-medium">{item.source}</span> · {relativeTime(new Date(item.pubDate))}
+                      </p>
+                    </div>
+                  </a>
+                );
+              })}
+            </div>
           </div>
         )}
+
+        <p className="mt-3 text-center text-xs text-stone-500">
+          News aggregated from {activeProvenance?.source ?? "Google News RSS"} for sentiment analysis
+        </p>
       </div>
     </section>
   );

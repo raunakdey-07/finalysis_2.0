@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchNews, getStockNews, getSentimentMix } from '@/lib/sentiment';
+import { fetchNews, fetchNewsPreview, getStockNews, getStockNewsLive, getStockNewsPreview, getSentimentMix } from '@/lib/sentiment';
 import { rateLimit, getClientId, RATE_LIMITS } from '@/lib/rate-limit';
 import { parseOptionalNseSymbol } from '@/lib/utils/symbol';
 import { ApiResponse, NewsItem } from '@/types';
@@ -33,6 +33,8 @@ export async function GET(request: NextRequest) {
     const symbol = searchParams.get('symbol');
     const limitParam = searchParams.get('limit');
     const type = searchParams.get('type');
+    const mode = searchParams.get('mode');
+    const isFastMode = mode === 'fast';
 
     const limit = parseLimit(limitParam, 20, 50);
     const parsedSymbol = parseOptionalNseSymbol(symbol);
@@ -66,9 +68,24 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const { items, provenance } = normalizedSymbol
-      ? await getStockNews(normalizedSymbol, limit)
-      : await fetchNews(limit);
+    let itemsResult = normalizedSymbol
+      ? isFastMode
+        ? await getStockNewsPreview(normalizedSymbol, limit)
+        : mode === 'live'
+          ? await getStockNewsLive(normalizedSymbol, limit)
+          : await getStockNews(normalizedSymbol, limit)
+      : isFastMode
+        ? await fetchNewsPreview(limit)
+        : await fetchNews(limit);
+
+    if (normalizedSymbol && mode === 'live' && itemsResult.items.length === 0) {
+      const fallbackResult = await getStockNews(normalizedSymbol, limit);
+      if (fallbackResult.items.length > 0) {
+        itemsResult = fallbackResult;
+      }
+    }
+
+    const { items, provenance } = itemsResult;
 
     const response: ApiResponse<NewsItem[]> = {
       success: true,
@@ -81,7 +98,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(response, {
       status: 200,
       headers: {
-        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=1800',
+        'Cache-Control': isFastMode
+          ? 'public, s-maxage=30, stale-while-revalidate=300'
+          : 'public, s-maxage=300, stale-while-revalidate=1800',
       },
     });
   } catch (error) {
