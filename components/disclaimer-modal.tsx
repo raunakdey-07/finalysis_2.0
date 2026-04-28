@@ -53,7 +53,7 @@ export default function DisclaimerModal() {
           <p>
             <strong className="text-stone-800">Data sources:</strong> Prices from NSE public endpoints 
             (may be 10+ minutes delayed), fundamentals scraped from Screener.in (may be outdated), 
-            news from Google News RSS (automated sentiment).
+            news from Google News RSS, with fallback sources from NSE India, Screener.in, BSE India, and Moneycontrol when needed.
           </p>
 
           <p>

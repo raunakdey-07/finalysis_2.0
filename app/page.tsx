@@ -24,7 +24,7 @@ const NewsSection = dynamic(() => import("@/components/home/news-section"), {
     <section className="mb-12">
       <div className="mb-4 flex items-center gap-4">
         <div className="h-px flex-1 bg-stone-200" />
-        <span className="text-xs font-medium uppercase tracking-widest text-stone-500">What People Are Saying</span>
+        <span className="text-xs font-medium uppercase tracking-widest text-stone-500">Recent Coverage</span>
         <div className="h-px flex-1 bg-stone-200" />
       </div>
       <div className="rounded-xl bg-white p-5 shadow-sm">
@@ -259,6 +259,7 @@ function setCachedSearchSuggestions(
 type MetricsBundle = StockMetrics & {
   recommendation?: string;
   fundamentals?: StockFundamentals | null;
+  quote?: StockPrice | null;
 };
 
 type QuoteState = {
@@ -337,76 +338,97 @@ export default function Page() {
     setSymbolInput(normalized);
   }, []);
 
-  // Fetch quote, metrics, news, and sentiment in a single request whenever symbol changes.
+  // Fetch critical price/metrics first, then let news trail behind.
   useEffect(() => {
     let cancelled = false;
+    let newsTimer: number | null = null;
 
     // Clean symbol for API - remove .NS suffix if present
     const apiSymbol = symbol.replace(/\.NS$/i, "");
 
-    async function loadOverview() {
+    async function loadCoreData() {
       setLoadingQuote(true);
       setLoadingMetrics(true);
       setLoadingNews(true);
+      setNewsState({ items: [], provenance: null, error: null });
+      setBlendedSentiment(null);
 
       try {
-        const res = await fetch(`/api/overview?symbol=${encodeURIComponent(apiSymbol)}&limit=6`);
-        const json: ApiResponse<{
-          quote: { data: StockPrice | null; error?: string };
-          metrics: { data: MetricsBundle | null; error?: string };
-          news: { data: NewsItem[]; error?: string };
-          blendedSentiment: BlendedSentimentState | null;
-        }> = await res.json();
+        const res = await fetch(`/api/metrics?symbol=${encodeURIComponent(apiSymbol)}`);
+        const json: ApiResponse<MetricsBundle> = await res.json();
 
         if (cancelled) return;
 
         if (!json.success || !json.data) {
           setQuoteState({ price: null, provenance: json.provenance ?? null, error: json.error ?? "Unable to fetch price" });
           setMetricsState({ metrics: null, provenance: json.provenance ?? null, error: json.error ?? "Unable to fetch metrics" });
-          setNewsState({ items: [], provenance: json.provenance ?? null, error: json.error ?? "Unable to fetch news" });
-          setBlendedSentiment(null);
           return;
         }
 
         setQuoteState({
-          price: json.data.quote.data ?? null,
+          price: json.data.quote ?? null,
           provenance: json.provenance ?? null,
-          error: json.data.quote.error ?? null,
+          error: null,
         });
 
         setMetricsState({
-          metrics: json.data.metrics.data ?? null,
+          metrics: json.data,
           provenance: json.provenance ?? null,
-          error: json.data.metrics.error ?? null,
+          error: null,
         });
-
-        setNewsState({
-          items: json.data.news.data ?? [],
-          provenance: json.provenance ?? null,
-          error: json.data.news.error ?? null,
-        });
-
-        setBlendedSentiment(json.data.blendedSentiment ?? null);
       } catch (err) {
         if (cancelled) return;
-        const fallbackError = err instanceof Error ? err.message : "Unable to fetch overview";
+        const fallbackError = err instanceof Error ? err.message : "Unable to fetch metrics";
         setQuoteState({ price: null, provenance: null, error: fallbackError });
         setMetricsState({ metrics: null, provenance: null, error: fallbackError });
-        setNewsState({ items: [], provenance: null, error: fallbackError });
-        setBlendedSentiment(null);
       } finally {
         if (!cancelled) {
           setLoadingQuote(false);
           setLoadingMetrics(false);
+        }
+      }
+    }
+
+    async function loadNews() {
+      try {
+        const res = await fetch(`/api/news?symbol=${encodeURIComponent(apiSymbol)}&limit=6`);
+        const json: ApiResponse<NewsItem[]> = await res.json();
+
+        if (cancelled) return;
+
+        if (!json.success || !json.data) {
+          setNewsState({ items: [], provenance: json.provenance ?? null, error: json.error ?? "Unable to fetch news" });
+          return;
+        }
+
+        setNewsState({
+          items: json.data ?? [],
+          provenance: json.provenance ?? null,
+          error: json.error ?? null,
+        });
+      } catch (err) {
+        if (cancelled) return;
+        const fallbackError = err instanceof Error ? err.message : "Unable to fetch news";
+        setNewsState({ items: [], provenance: null, error: fallbackError });
+      } finally {
+        if (!cancelled) {
           setLoadingNews(false);
         }
       }
     }
 
-    loadOverview();
+    void loadCoreData().finally(() => {
+      if (cancelled) return;
+      newsTimer = window.setTimeout(() => {
+        void loadNews();
+      }, 180);
+    });
 
     return () => {
       cancelled = true;
+      if (newsTimer !== null) {
+        window.clearTimeout(newsTimer);
+      }
     };
   }, [symbol]);
 
@@ -415,7 +437,7 @@ export default function Page() {
     name: symbol,
   };
   const ticker = baseTicker ?? fallbackTicker;
-  const displayName = ticker.name;
+  const displayName = metrics?.fundamentals?.companyName ?? ticker.name;
   const hasLiveQuote = !!price;
   const effectivePrice = hasLiveQuote ? price.price : null;
   const effectiveChange = hasLiveQuote ? price.daily_change_percent : null;
@@ -900,7 +922,7 @@ export default function Page() {
             <div className={`mt-6 rounded-xl border-l-4 ${VERDICT[overallVerdict].accent} bg-white p-6 shadow-sm`}>
               <div className="flex items-center gap-3">
                 <span className={`text-2xl font-semibold ${VERDICT[overallVerdict].text}`}>
-                  {overallScore >= 65 ? "Worth investigating" : overallScore >= 45 ? "Proceed with caution" : "Red flags present"}
+                  {overallScore >= 65 ? "Favorable setup" : overallScore >= 45 ? "Mixed signals" : "Higher risk"}
                 </span>
               </div>
               <p className="mt-2 text-sm leading-relaxed text-stone-500">
@@ -944,7 +966,7 @@ export default function Page() {
                     )}
                   </div>
                   <div>
-                    <p className="mb-1 font-medium text-stone-700">Beginner next checks</p>
+                    <p className="mb-1 font-medium text-stone-700">Next checks</p>
                     {verdictBreakdown.nextSteps.length > 0 ? (
                       <ul className="space-y-1">
                         {verdictBreakdown.nextSteps.slice(0, 3).map((item) => (
@@ -985,7 +1007,7 @@ export default function Page() {
           {/* Footer - minimal, trustworthy */}
           <footer className="border-t border-stone-200 pt-8 text-center">
             <p className="text-xs text-stone-500">
-              Data from NSE, Screener.in, and Google News · Cached for reliability
+              Data from NSE, Screener.in, and Google News RSS, with trusted fallback research when needed · Cached for reliability
             </p>
             <p className="mt-2 text-xs font-medium text-stone-500">
               This is not financial advice. Always do your own research.

@@ -46,20 +46,47 @@ type NewsSectionProps = {
 };
 
 export default function NewsSection({ loadingNews, news, newsProv }: NewsSectionProps) {
-  const usingFallbackResources = news.some((item) => item.source === "Finalysis Resources");
+  const sourceLabel = newsProv?.source ?? "Google News RSS";
+  const usingFallbackResources = sourceLabel.toLowerCase().includes("fallback resources");
+  const displaySourceLabel = sourceLabel
+    .replace(/^Fallback resources:\s*/i, "")
+    .replace(/^Google News RSS \+ fallback resources:\s*/i, "Google News RSS + ");
+  const feedStateLabel = usingFallbackResources
+    ? "Backup sources"
+    : sourceLabel.toLowerCase().includes("gnews fallback")
+      ? "Live + backup"
+      : newsProv?.cacheHit
+        ? "Cached live feed"
+        : "Live feed";
 
   return (
     <section className="mb-12">
       <div className="mb-4 flex items-center gap-4">
         <div className="h-px flex-1 bg-stone-200" />
-        <span className="text-xs font-medium uppercase tracking-widest text-stone-500">What People Are Saying</span>
+        <span className="text-xs font-medium uppercase tracking-widest text-stone-500">Recent Coverage</span>
         <div className="h-px flex-1 bg-stone-200" />
       </div>
 
       <div className="rounded-xl bg-white p-5 shadow-sm">
+        {newsProv ? (
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-stone-500">News aggregated from {displaySourceLabel} for sentiment analysis</p>
+            <span
+              className={`rounded-full border px-2 py-1 text-[11px] font-medium ${
+                usingFallbackResources
+                  ? "border-amber-200 bg-amber-50 text-amber-700"
+                  : newsProv.cacheHit
+                    ? "border-stone-200 bg-stone-50 text-stone-600"
+                    : "border-emerald-200 bg-emerald-50 text-emerald-700"
+              }`}
+            >
+              {feedStateLabel}
+            </span>
+          </div>
+        ) : null}
         {usingFallbackResources ? (
           <p className="mb-3 rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-xs text-stone-600">
-            Live RSS is thin right now. Showing trusted fallback resources so research never stalls.
+            Live RSS is thin right now. Showing backup sources so research never stalls.
           </p>
         ) : null}
         {loadingNews ? (
@@ -91,9 +118,6 @@ export default function NewsSection({ loadingNews, news, newsProv }: NewsSection
           </div>
         )}
       </div>
-      <p className="mt-3 text-center text-xs text-stone-500">
-        News aggregated from {newsProv?.source ?? "Google News RSS"} for sentiment analysis
-      </p>
     </section>
   );
 }

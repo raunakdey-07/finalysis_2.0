@@ -9,7 +9,7 @@ import { fetchNSEQuote } from '@/lib/nse';
 import { fetchFundamentals } from '@/lib/fundamentals';
 import { rateLimit, getClientId, RATE_LIMITS } from '@/lib/rate-limit';
 import { parseRequiredNseSymbol } from '@/lib/utils/symbol';
-import { ApiResponse, StockFundamentals, StockMetrics } from '@/types';
+import { ApiResponse, StockFundamentals, StockMetrics, StockPrice } from '@/types';
 
 export async function GET(request: NextRequest) {
   // Rate limiting
@@ -67,12 +67,13 @@ export async function GET(request: NextRequest) {
     const metrics = calculateMetrics(fundamentals, price);
     const recommendation = getRecommendation(metrics.overallScore);
 
-    const response: ApiResponse<StockMetrics & { recommendation: string; fundamentals: StockFundamentals }> = {
+    const response: ApiResponse<StockMetrics & { recommendation: string; fundamentals: StockFundamentals; quote: StockPrice }> = {
       success: true,
       data: {
         ...metrics,
         recommendation,
         fundamentals,
+        quote: price,
       },
       timestamp: new Date().toISOString(),
       provenance: {
