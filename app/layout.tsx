@@ -47,6 +47,10 @@ export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: "Finalysis - Simple Stock Research for India",
   description: "Understand any NSE stock in 30 seconds. We answer three questions: Is it a good business? Is it improving? Is the price fair?",
+  icons: {
+    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
+    shortcut: "/icon.svg",
+  },
   alternates: {
     canonical: "/",
   },
