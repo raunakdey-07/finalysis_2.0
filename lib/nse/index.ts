@@ -191,8 +191,8 @@ export async function fetchNSEQuote(symbol: string, options: QuoteFetchOptions =
     }
 
     const snapshot = await getDailyPricesSnapshot();
-    const snapshotPrice = snapshot?.items?.[symbol] ?? null;
-    if (snapshotPrice) {
+    if (snapshot && snapshot.items?.[symbol]) {
+      const snapshotPrice = snapshot.items[symbol];
       const normalizedPrice: StockPrice = {
         ...snapshotPrice,
         timestamp: snapshotPrice.timestamp instanceof Date

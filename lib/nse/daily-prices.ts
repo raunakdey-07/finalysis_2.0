@@ -1,4 +1,4 @@
-import { createClient, type RedisClientType } from 'redis';
+import { createClient } from 'redis';
 import { StockPrice } from '@/types';
 
 export const DAILY_PRICES_KEY = 'prices:daily:v1';
@@ -12,7 +12,9 @@ export type DailyPricesSnapshot = {
   items: Record<string, StockPrice>;
 };
 
-let redisClientPromise: Promise<RedisClientType> | null = null;
+type RedisClient = ReturnType<typeof createClient>;
+
+let redisClientPromise: Promise<RedisClient> | null = null;
 
 function getRedisUrl(): string | null {
   return process.env.KV_REDIS_URL || process.env.REDIS_URL || null;
@@ -22,7 +24,7 @@ function isRedisConfigured(): boolean {
   return Boolean(getRedisUrl());
 }
 
-async function getRedisClient(): Promise<RedisClientType> {
+async function getRedisClient(): Promise<RedisClient> {
   if (!redisClientPromise) {
     const url = getRedisUrl();
     if (!url) {
