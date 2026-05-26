@@ -124,8 +124,8 @@ export async function GET(request: NextRequest) {
     let metrics: MetricsBundle | null = null;
     let metricsError: string | undefined;
 
-    if (quoteResult.price && fundamentalsResult.fundamentals) {
-      const calculated = calculateMetrics(fundamentalsResult.fundamentals, quoteResult.price);
+    if (fundamentalsResult.fundamentals) {
+      const calculated = calculateMetrics(fundamentalsResult.fundamentals, quoteResult.price ?? null);
       metrics = {
         ...calculated,
         recommendation: getRecommendation(calculated.overallScore),

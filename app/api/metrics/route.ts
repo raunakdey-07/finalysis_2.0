@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
     const { price, provenance: priceProvenance } = await fetchNSEQuote(symbolUpper);
     const { fundamentals, provenance: fundamentalsProvenance } = await fetchFundamentals(symbolUpper);
 
-    if (!fundamentals || !price) {
+    if (!fundamentals) {
       const response: ApiResponse<null> = {
         success: false,
         data: null,
@@ -64,16 +64,21 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(response, { status: 404 });
     }
 
-    const metrics = calculateMetrics(fundamentals, price);
+    const metrics = calculateMetrics(fundamentals, price ?? null);
     const recommendation = getRecommendation(metrics.overallScore);
+    const warnings = [
+      ...(priceProvenance.warnings || []),
+      ...(fundamentalsProvenance.warnings || []),
+      ...(price ? [] : ['Price unavailable; momentum score set to neutral.']),
+    ];
 
-    const response: ApiResponse<StockMetrics & { recommendation: string; fundamentals: StockFundamentals; quote: StockPrice }> = {
+    const response: ApiResponse<StockMetrics & { recommendation: string; fundamentals: StockFundamentals; quote: StockPrice | null }> = {
       success: true,
       data: {
         ...metrics,
         recommendation,
         fundamentals,
-        quote: price,
+        quote: price ?? null,
       },
       timestamp: new Date().toISOString(),
       provenance: {
@@ -82,10 +87,7 @@ export async function GET(request: NextRequest) {
         cacheTTL: `${priceProvenance.cacheTTL} / ${fundamentalsProvenance.cacheTTL}`,
         cacheHit: priceProvenance.cacheHit || fundamentalsProvenance.cacheHit,
         confidenceLevel: priceProvenance.confidenceLevel,
-        warnings: [
-          ...(priceProvenance.warnings || []),
-          ...(fundamentalsProvenance.warnings || []),
-        ],
+        warnings: warnings.length > 0 ? warnings : undefined,
       },
     };
 

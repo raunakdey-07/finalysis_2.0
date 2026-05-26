@@ -1,8 +1,12 @@
 import { Provenance, StockPrice } from '@/types';
 import cache from '@/lib/cache';
+import { getDailyPricesSnapshot } from '@/lib/nse/daily-prices';
 import { fetchWithTimeout } from '@/lib/utils/fetch-with-timeout';
 
 const NSE_BASE_URL = 'https://www.nseindia.com';
+const NSE_HOME_URL = 'https://www.nseindia.com/';
+const NSE_COOKIE_CACHE_KEY = 'nse_cookie_header';
+const NSE_COOKIE_TTL_MS = 2 * 60 * 1000;
 const QUOTE_TTL_MS = 10 * 60 * 1000; // 5–15m window; choose 10m middle
 const SEARCH_TTL_MS = 10 * 60 * 1000;
 const CIRCUIT_BREAKER_THRESHOLD = 4;
@@ -21,14 +25,71 @@ const circuit: Record<'quote' | 'search', CircuitState> = {
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const getHeaders = () => ({
+const getHeaders = (cookie?: string | null) => ({
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
   Accept: 'application/json, text/plain, */*',
   'Accept-Language': 'en-US,en;q=0.9',
   'Accept-Encoding': 'gzip, deflate, br',
   Referer: 'https://www.nseindia.com/',
   'X-Requested-With': 'XMLHttpRequest',
+  ...(cookie ? { Cookie: cookie } : {}),
 });
+
+type HeadersWithSetCookie = Headers & { getSetCookie?: () => string[] };
+
+function extractCookiePairs(setCookieHeader: string): string[] {
+  const pairs: string[] = [];
+  const regex = /(?:^|,)\s*([^=;,]+=[^;]+)/g;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(setCookieHeader)) !== null) {
+    pairs.push(match[1]);
+  }
+  return pairs;
+}
+
+async function getNseCookieHeader(): Promise<string | null> {
+  const cached = cache.getEntry<string>(NSE_COOKIE_CACHE_KEY);
+  if (cached) {
+    return cached.data;
+  }
+
+  try {
+    const response = await fetchWithTimeout(
+      NSE_HOME_URL,
+      {
+        headers: {
+          ...getHeaders(),
+          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        },
+      },
+      10_000
+    );
+
+    if (!response.ok) {
+      throw new Error(`NSE homepage error: ${response.status}`);
+    }
+
+    const headers = response.headers as HeadersWithSetCookie;
+    const setCookieHeader = typeof headers.getSetCookie === 'function'
+      ? headers.getSetCookie().join(', ')
+      : headers.get('set-cookie');
+
+    if (!setCookieHeader) {
+      return null;
+    }
+
+    const pairs = extractCookiePairs(setCookieHeader);
+    if (pairs.length === 0) {
+      return null;
+    }
+
+    const cookieHeader = pairs.join('; ');
+    cache.set(NSE_COOKIE_CACHE_KEY, cookieHeader, NSE_COOKIE_TTL_MS);
+    return cookieHeader;
+  } catch {
+    return null;
+  }
+}
 
 function canRequest(key: keyof typeof circuit) {
   const c = circuit[key];
@@ -104,8 +165,56 @@ export interface QuoteResult {
   provenance: Provenance;
 }
 
-export async function fetchNSEQuote(symbol: string): Promise<QuoteResult> {
+export type QuoteFetchOptions = {
+  allowSnapshot?: boolean;
+};
+
+export async function fetchNSEQuote(symbol: string, options: QuoteFetchOptions = {}): Promise<QuoteResult> {
+  const allowSnapshot = options.allowSnapshot !== false;
   const cacheKey = `nse_quote_${symbol}`;
+  const snapshotCacheKey = `nse_quote_snapshot_${symbol}`;
+
+  if (allowSnapshot) {
+    const cachedSnapshot = cache.getEntry<StockPrice>(snapshotCacheKey);
+    if (cachedSnapshot) {
+      return {
+        price: cachedSnapshot.data,
+        provenance: buildProvenance({
+          source: 'Daily close snapshot (Redis)',
+          ttlLabel: '1d',
+          cacheHit: true,
+          lastUpdated: new Date(cachedSnapshot.timestamp),
+          confidence: 'medium',
+          warnings: ['Daily snapshot used; prices update after market close.'],
+        }),
+      };
+    }
+
+    const snapshot = await getDailyPricesSnapshot();
+    const snapshotPrice = snapshot?.items?.[symbol] ?? null;
+    if (snapshotPrice) {
+      const normalizedPrice: StockPrice = {
+        ...snapshotPrice,
+        timestamp: snapshotPrice.timestamp instanceof Date
+          ? snapshotPrice.timestamp
+          : new Date(snapshotPrice.timestamp),
+      };
+
+      cache.set(snapshotCacheKey, normalizedPrice, QUOTE_TTL_MS);
+      return {
+        price: normalizedPrice,
+        provenance: buildProvenance({
+          source: 'Daily close snapshot (Redis)',
+          ttlLabel: '1d',
+          cacheHit: true,
+          lastUpdated: new Date(snapshot.updatedAt),
+          confidence: 'medium',
+          warnings: ['Daily snapshot used; prices update after market close.'],
+        }),
+      };
+    }
+  }
+
   const cached = cache.getEntry<StockPrice>(cacheKey);
 
   if (cached) {
@@ -123,8 +232,9 @@ export async function fetchNSEQuote(symbol: string): Promise<QuoteResult> {
 
   try {
     const data = await withRetries('quote', async () => {
+      const cookieHeader = await getNseCookieHeader();
       const response = await fetchWithTimeout(`${NSE_BASE_URL}/api/quote-equity?symbol=${encodeURIComponent(symbol)}`, {
-        headers: getHeaders(),
+        headers: getHeaders(cookieHeader),
       }, 10_000);
 
       if (!response.ok) {
@@ -239,8 +349,9 @@ export async function searchStocks(query: string): Promise<SearchResult> {
 
   try {
     const data = await withRetries('search', async () => {
+      const cookieHeader = await getNseCookieHeader();
       const response = await fetchWithTimeout(`${NSE_BASE_URL}/api/search/autocomplete?q=${encodeURIComponent(query)}`, {
-        headers: getHeaders(),
+        headers: getHeaders(cookieHeader),
       }, 10_000);
 
       if (!response.ok) {

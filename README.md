@@ -99,6 +99,12 @@ npm run lint
 npm run build
 ```
 
+Daily price snapshot cron:
+
+- Endpoint: `/api/cron/update-prices`
+- Optional protection: set `CRON_SECRET` and send `Authorization: Bearer <secret>` when calling manually.
+- Vercel cron will keep this updated after market close (weekday schedule).
+
 ## Disclaimer
 
 ⚠️ **This is not financial advice.** Data may be delayed, incomplete, or inaccurate. Always verify from official sources and consult a SEBI-registered advisor before investing.

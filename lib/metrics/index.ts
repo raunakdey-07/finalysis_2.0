@@ -344,7 +344,14 @@ function calculateProfitabilityScore(fundamentals: StockFundamentals, profile: S
 /**
  * Calculate momentum score based on price performance
  */
-function calculateMomentumScore(price: StockPrice): { score: number; explanation: string } {
+function calculateMomentumScore(price?: StockPrice | null): { score: number; explanation: string } {
+  if (!price) {
+    return {
+      score: 50,
+      explanation: 'Price data unavailable; momentum score set to neutral.',
+    };
+  }
+
   let score = 50;
   const factors: string[] = [];
 
@@ -386,7 +393,7 @@ function calculateMomentumScore(price: StockPrice): { score: number; explanation
  */
 export function calculateMetrics(
   fundamentals: StockFundamentals,
-  price: StockPrice
+  price: StockPrice | null
 ): StockMetrics {
   const sectorProfile = inferSectorProfile(fundamentals.industry);
 
