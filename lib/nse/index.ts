@@ -2,6 +2,7 @@ import { Provenance, StockPrice } from '@/types';
 import cache from '@/lib/cache';
 import { getDailyPricesSnapshot } from '@/lib/nse/daily-prices';
 import { fetchWithTimeout } from '@/lib/utils/fetch-with-timeout';
+import { fetchFinnhubQuote } from '@/lib/finnhub';
 
 const NSE_BASE_URL = 'https://www.nseindia.com';
 const NSE_HOME_URL = 'https://www.nseindia.com/';
@@ -244,43 +245,30 @@ export async function fetchNSEQuote(symbol: string, options: QuoteFetchOptions =
 
   try {
     const data = await withRetries('quote', async () => {
-      const cookieHeader = await getNseCookieHeader();
-      const response = await fetchWithTimeout(`${NSE_BASE_URL}/api/quote-equity?symbol=${encodeURIComponent(symbol)}`, {
-        headers: getHeaders(cookieHeader),
-      }, 10_000);
-
-      if (!response.ok) {
-        throw new Error(`NSE API error: ${response.status}`);
-      }
-
-      return response.json();
+      return await fetchFinnhubQuote(symbol);
     });
 
-    const lastPrice = data?.priceInfo?.lastPrice;
+    const lastPrice = data.price;
     if (typeof lastPrice !== 'number' || !Number.isFinite(lastPrice) || lastPrice <= 0) {
       throw new Error('quote-not-found');
     }
 
-    const previousClose = data?.priceInfo?.previousClose;
+    const previousClose = data.previousClose ?? lastPrice;
 
     const stockPrice: StockPrice = {
-      symbol,
-      price: lastPrice,
-      change: data.priceInfo?.change ?? 0,
-      changePercent: data.priceInfo?.pChange ?? 0,
-      volume: data.preOpenMarket?.totalTradedVolume ?? 0,
-      open: data.priceInfo?.open ?? lastPrice,
-      high: data.priceInfo?.intraDayHighLow?.max ?? undefined,
-      low: data.priceInfo?.intraDayHighLow?.min ?? undefined,
-      previousClose: previousClose ?? undefined,
-      fiftyTwoWeekHigh: data.priceInfo?.weekHighLow?.max ?? undefined,
-      fiftyTwoWeekLow: data.priceInfo?.weekHighLow?.min ?? undefined,
+      symbol: data.symbol,
+      price: data.price,
+      change: data.change,
+      changePercent: data.changePercent,
+      volume: data.volume ?? 0,
+      open: data.open,
+      high: data.high,
+      low: data.low,
+      previousClose,
+      fiftyTwoWeekHigh: data.fiftyTwoWeekHigh,
+      fiftyTwoWeekLow: data.fiftyTwoWeekLow,
       timestamp: new Date(),
-      // Backend canonical: daily_change_percent = ((current_price - previous_close) / previous_close) * 100
-      daily_change_percent: 
-        previousClose && previousClose > 0
-          ? ((lastPrice - previousClose) / previousClose) * 100
-          : 0,
+      daily_change_percent: data.daily_change_percent,
     };
 
     cache.set(cacheKey, stockPrice, QUOTE_TTL_MS);
@@ -288,7 +276,7 @@ export async function fetchNSEQuote(symbol: string, options: QuoteFetchOptions =
     return {
       price: stockPrice,
       provenance: buildProvenance({
-        source: 'NSE public endpoints',
+        source: 'Finnhub API',
         ttlLabel: '10m',
         cacheHit: false,
         lastUpdated: new Date(),
@@ -307,7 +295,7 @@ export async function fetchNSEQuote(symbol: string, options: QuoteFetchOptions =
       return {
         price: stale.data,
         provenance: buildProvenance({
-          source: 'NSE public endpoints',
+          source: 'Finnhub API',
           ttlLabel: '10m',
           cacheHit: true,
           lastUpdated: new Date(stale.timestamp),
@@ -320,7 +308,7 @@ export async function fetchNSEQuote(symbol: string, options: QuoteFetchOptions =
     return {
       price: null,
       provenance: buildProvenance({
-        source: 'NSE public endpoints',
+        source: 'Finnhub API',
         ttlLabel: '10m',
         cacheHit: false,
         lastUpdated: new Date(),
