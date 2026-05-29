@@ -176,14 +176,18 @@ export async function fetchNSEQuote(symbol: string, options: QuoteFetchOptions =
 
   if (allowSnapshot) {
     const cachedSnapshot = cache.getEntry<StockPrice>(snapshotCacheKey);
-    if (cachedSnapshot) {
+    const cachedSnapshotTime = cachedSnapshot ? new Date(cachedSnapshot.data.timestamp).getTime() : NaN;
+    const cachedSnapshotAgeHours = cachedSnapshot ? (Date.now() - cachedSnapshotTime) / (1000 * 60 * 60) : Infinity;
+    const freshCachedSnapshot = cachedSnapshot && Number.isFinite(cachedSnapshotAgeHours) && cachedSnapshotAgeHours <= 48;
+
+    if (freshCachedSnapshot) {
       return {
         price: cachedSnapshot.data,
         provenance: buildProvenance({
           source: 'Daily close snapshot (Redis)',
           ttlLabel: '1d',
           cacheHit: true,
-          lastUpdated: new Date(cachedSnapshot.timestamp),
+          lastUpdated: new Date(cachedSnapshot.data.timestamp),
           confidence: 'medium',
           warnings: ['Daily snapshot used; prices update after market close.'],
         }),
@@ -193,25 +197,33 @@ export async function fetchNSEQuote(symbol: string, options: QuoteFetchOptions =
     const snapshot = await getDailyPricesSnapshot();
     if (snapshot && snapshot.items?.[symbol]) {
       const snapshotPrice = snapshot.items[symbol];
-      const normalizedPrice: StockPrice = {
-        ...snapshotPrice,
-        timestamp: snapshotPrice.timestamp instanceof Date
-          ? snapshotPrice.timestamp
-          : new Date(snapshotPrice.timestamp),
-      };
+      const snapshotUpdatedAt = new Date(snapshot.updatedAt);
+      const snapshotAgeHours = (Date.now() - snapshotUpdatedAt.getTime()) / (1000 * 60 * 60);
+      const staleSnapshot = !Number.isFinite(snapshotAgeHours) || snapshotAgeHours > 48;
 
-      cache.set(snapshotCacheKey, normalizedPrice, QUOTE_TTL_MS);
-      return {
-        price: normalizedPrice,
-        provenance: buildProvenance({
-          source: 'Daily close snapshot (Redis)',
-          ttlLabel: '1d',
-          cacheHit: true,
-          lastUpdated: new Date(snapshot.updatedAt),
-          confidence: 'medium',
-          warnings: ['Daily snapshot used; prices update after market close.'],
-        }),
-      };
+      if (staleSnapshot) {
+        // Skip stale snapshots so live fetch can recover data if cron has stalled.
+      } else {
+        const normalizedPrice: StockPrice = {
+          ...snapshotPrice,
+          timestamp: snapshotPrice.timestamp instanceof Date
+            ? snapshotPrice.timestamp
+            : new Date(snapshotPrice.timestamp),
+        };
+
+        cache.set(snapshotCacheKey, normalizedPrice, QUOTE_TTL_MS);
+        return {
+          price: normalizedPrice,
+          provenance: buildProvenance({
+            source: 'Daily close snapshot (Redis)',
+            ttlLabel: '1d',
+            cacheHit: true,
+            lastUpdated: new Date(snapshot.updatedAt),
+            confidence: 'medium',
+            warnings: ['Daily snapshot used; prices update after market close.'],
+          }),
+        };
+      }
     }
   }
 
