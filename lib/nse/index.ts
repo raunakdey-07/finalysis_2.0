@@ -1,7 +1,7 @@
 import { Provenance, StockPrice } from '@/types';
 import cache from '@/lib/cache';
 import { getDailyPricesSnapshot } from '@/lib/nse/daily-prices';
-import { fetchTwelveDataQuote, searchTwelveDataSymbols } from '@/lib/twelvedata';
+import { fetchYahooQuote, searchYahooSymbols } from '@/lib/yahoo';
 const QUOTE_TTL_MS = 10 * 60 * 1000; // 5–15m window; choose 10m middle
 const SEARCH_TTL_MS = 10 * 60 * 1000;
 const CIRCUIT_BREAKER_THRESHOLD = 4;
@@ -165,7 +165,7 @@ export async function fetchNSEQuote(symbol: string, options: QuoteFetchOptions =
     return {
       price: cached.data,
       provenance: buildProvenance({
-        source: 'Twelve Data API',
+        source: 'Yahoo Finance API',
         ttlLabel: '10m',
         cacheHit: true,
         lastUpdated: new Date(cached.timestamp),
@@ -175,14 +175,14 @@ export async function fetchNSEQuote(symbol: string, options: QuoteFetchOptions =
   }
 
   try {
-    const stockPrice = await withRetries('quote', async () => fetchTwelveDataQuote(symbol));
+    const stockPrice = await withRetries('quote', async () => fetchYahooQuote(symbol));
 
     cache.set(cacheKey, stockPrice, QUOTE_TTL_MS);
 
     return {
       price: stockPrice,
       provenance: buildProvenance({
-        source: 'Twelve Data API',
+        source: 'Yahoo Finance API',
         ttlLabel: '10m',
         cacheHit: false,
         lastUpdated: new Date(stockPrice.timestamp),
@@ -201,7 +201,7 @@ export async function fetchNSEQuote(symbol: string, options: QuoteFetchOptions =
       return {
         price: stale.data,
         provenance: buildProvenance({
-          source: 'Twelve Data API',
+          source: 'Yahoo Finance API',
           ttlLabel: '10m',
           cacheHit: true,
           lastUpdated: new Date(stale.timestamp),
@@ -214,7 +214,7 @@ export async function fetchNSEQuote(symbol: string, options: QuoteFetchOptions =
     return {
       price: null,
       provenance: buildProvenance({
-        source: 'Twelve Data API',
+        source: 'Yahoo Finance API',
         ttlLabel: '10m',
         cacheHit: false,
         lastUpdated: new Date(),
@@ -244,7 +244,7 @@ export async function searchStocks(query: string): Promise<SearchResult> {
     return {
       symbols: cached.data,
       provenance: buildProvenance({
-        source: 'Twelve Data search',
+        source: 'Yahoo Finance search',
         ttlLabel: '10m',
         cacheHit: true,
         lastUpdated: new Date(cached.timestamp),
@@ -254,14 +254,14 @@ export async function searchStocks(query: string): Promise<SearchResult> {
   }
 
   try {
-    const symbols = await withRetries('search', async () => searchTwelveDataSymbols(query));
+    const symbols = await withRetries('search', async () => searchYahooSymbols(query));
     const normalizedSymbols = symbols.map(normalizeSymbol).filter(Boolean);
     cache.set(cacheKey, normalizedSymbols, SEARCH_TTL_MS);
 
     return {
       symbols: normalizedSymbols,
       provenance: buildProvenance({
-        source: 'Twelve Data search',
+        source: 'Yahoo Finance search',
         ttlLabel: '10m',
         cacheHit: false,
         lastUpdated: new Date(),
@@ -280,7 +280,7 @@ export async function searchStocks(query: string): Promise<SearchResult> {
       return {
         symbols: stale.data,
         provenance: buildProvenance({
-          source: 'Twelve Data search',
+          source: 'Yahoo Finance search',
           ttlLabel: '10m',
           cacheHit: true,
           lastUpdated: new Date(stale.timestamp),
@@ -293,7 +293,7 @@ export async function searchStocks(query: string): Promise<SearchResult> {
     return {
       symbols: [],
       provenance: buildProvenance({
-        source: 'Twelve Data search',
+        source: 'Yahoo Finance search',
         ttlLabel: '10m',
         cacheHit: false,
         lastUpdated: new Date(),
