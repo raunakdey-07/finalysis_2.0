@@ -1,17 +1,13 @@
 import { Provenance, StockPrice } from '@/types';
 import cache from '@/lib/cache';
 import { getDailyPricesSnapshot } from '@/lib/nse/daily-prices';
-import { fetchWithTimeout } from '@/lib/utils/fetch-with-timeout';
-import { fetchFinnhubQuote } from '@/lib/finnhub';
-
-const NSE_BASE_URL = 'https://www.nseindia.com';
-const NSE_HOME_URL = 'https://www.nseindia.com/';
-const NSE_COOKIE_CACHE_KEY = 'nse_cookie_header';
-const NSE_COOKIE_TTL_MS = 2 * 60 * 1000;
+import { fetchTwelveDataQuote, searchTwelveDataSymbols } from '@/lib/twelvedata';
 const QUOTE_TTL_MS = 10 * 60 * 1000; // 5–15m window; choose 10m middle
 const SEARCH_TTL_MS = 10 * 60 * 1000;
 const CIRCUIT_BREAKER_THRESHOLD = 4;
 const CIRCUIT_BREAKER_COOLDOWN_MS = 60 * 1000;
+
+const normalizeSymbol = (value: string) => value.toUpperCase().trim().replace(/\.NS$/i, '');
 
 type CircuitState = {
   failures: number;
@@ -26,71 +22,6 @@ const circuit: Record<'quote' | 'search', CircuitState> = {
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const getHeaders = (cookie?: string | null) => ({
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  Accept: 'application/json, text/plain, */*',
-  'Accept-Language': 'en-US,en;q=0.9',
-  'Accept-Encoding': 'gzip, deflate, br',
-  Referer: 'https://www.nseindia.com/',
-  'X-Requested-With': 'XMLHttpRequest',
-  ...(cookie ? { Cookie: cookie } : {}),
-});
-
-type HeadersWithSetCookie = Headers & { getSetCookie?: () => string[] };
-
-function extractCookiePairs(setCookieHeader: string): string[] {
-  const pairs: string[] = [];
-  const regex = /(?:^|,)\s*([^=;,]+=[^;]+)/g;
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(setCookieHeader)) !== null) {
-    pairs.push(match[1]);
-  }
-  return pairs;
-}
-
-async function getNseCookieHeader(): Promise<string | null> {
-  const cached = cache.getEntry<string>(NSE_COOKIE_CACHE_KEY);
-  if (cached) {
-    return cached.data;
-  }
-
-  try {
-    const response = await fetchWithTimeout(
-      NSE_HOME_URL,
-      {
-        headers: {
-          ...getHeaders(),
-          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        },
-      },
-      10_000
-    );
-
-    if (!response.ok) {
-      throw new Error(`NSE homepage error: ${response.status}`);
-    }
-
-    const headers = response.headers as HeadersWithSetCookie;
-    const setCookieHeader = typeof headers.getSetCookie === 'function'
-      ? headers.getSetCookie().join(', ')
-      : headers.get('set-cookie');
-
-    if (!setCookieHeader) {
-      return null;
-    }
-
-    const pairs = extractCookiePairs(setCookieHeader);
-    if (pairs.length === 0) {
-      return null;
-    }
-
-    const cookieHeader = pairs.join('; ');
-    cache.set(NSE_COOKIE_CACHE_KEY, cookieHeader, NSE_COOKIE_TTL_MS);
-    return cookieHeader;
-  } catch {
-    return null;
-  }
-}
 
 function canRequest(key: keyof typeof circuit) {
   const c = circuit[key];
@@ -234,7 +165,7 @@ export async function fetchNSEQuote(symbol: string, options: QuoteFetchOptions =
     return {
       price: cached.data,
       provenance: buildProvenance({
-        source: 'NSE public endpoints',
+        source: 'Twelve Data API',
         ttlLabel: '10m',
         cacheHit: true,
         lastUpdated: new Date(cached.timestamp),
@@ -244,42 +175,17 @@ export async function fetchNSEQuote(symbol: string, options: QuoteFetchOptions =
   }
 
   try {
-    const data = await withRetries('quote', async () => {
-      return await fetchFinnhubQuote(symbol);
-    });
-
-    const lastPrice = data.price;
-    if (typeof lastPrice !== 'number' || !Number.isFinite(lastPrice) || lastPrice <= 0) {
-      throw new Error('quote-not-found');
-    }
-
-    const previousClose = data.previousClose ?? lastPrice;
-
-    const stockPrice: StockPrice = {
-      symbol: data.symbol,
-      price: data.price,
-      change: data.change,
-      changePercent: data.changePercent,
-      volume: data.volume ?? 0,
-      open: data.open,
-      high: data.high,
-      low: data.low,
-      previousClose,
-      fiftyTwoWeekHigh: data.fiftyTwoWeekHigh,
-      fiftyTwoWeekLow: data.fiftyTwoWeekLow,
-      timestamp: new Date(),
-      daily_change_percent: data.daily_change_percent,
-    };
+    const stockPrice = await withRetries('quote', async () => fetchTwelveDataQuote(symbol));
 
     cache.set(cacheKey, stockPrice, QUOTE_TTL_MS);
 
     return {
       price: stockPrice,
       provenance: buildProvenance({
-        source: 'Finnhub API',
+        source: 'Twelve Data API',
         ttlLabel: '10m',
         cacheHit: false,
-        lastUpdated: new Date(),
+        lastUpdated: new Date(stockPrice.timestamp),
         confidence: 'high',
       }),
     };
@@ -295,7 +201,7 @@ export async function fetchNSEQuote(symbol: string, options: QuoteFetchOptions =
       return {
         price: stale.data,
         provenance: buildProvenance({
-          source: 'Finnhub API',
+          source: 'Twelve Data API',
           ttlLabel: '10m',
           cacheHit: true,
           lastUpdated: new Date(stale.timestamp),
@@ -308,7 +214,7 @@ export async function fetchNSEQuote(symbol: string, options: QuoteFetchOptions =
     return {
       price: null,
       provenance: buildProvenance({
-        source: 'Finnhub API',
+        source: 'Twelve Data API',
         ttlLabel: '10m',
         cacheHit: false,
         lastUpdated: new Date(),
@@ -338,7 +244,7 @@ export async function searchStocks(query: string): Promise<SearchResult> {
     return {
       symbols: cached.data,
       provenance: buildProvenance({
-        source: 'NSE search',
+        source: 'Twelve Data search',
         ttlLabel: '10m',
         cacheHit: true,
         lastUpdated: new Date(cached.timestamp),
@@ -348,26 +254,14 @@ export async function searchStocks(query: string): Promise<SearchResult> {
   }
 
   try {
-    const data = await withRetries('search', async () => {
-      const cookieHeader = await getNseCookieHeader();
-      const response = await fetchWithTimeout(`${NSE_BASE_URL}/api/search/autocomplete?q=${encodeURIComponent(query)}`, {
-        headers: getHeaders(cookieHeader),
-      }, 10_000);
-
-      if (!response.ok) {
-        throw new Error(`NSE search error: ${response.status}`);
-      }
-
-      return response.json();
-    });
-
-    const symbols = data.symbols || [];
-    cache.set(cacheKey, symbols, SEARCH_TTL_MS);
+    const symbols = await withRetries('search', async () => searchTwelveDataSymbols(query));
+    const normalizedSymbols = symbols.map(normalizeSymbol).filter(Boolean);
+    cache.set(cacheKey, normalizedSymbols, SEARCH_TTL_MS);
 
     return {
-      symbols,
+      symbols: normalizedSymbols,
       provenance: buildProvenance({
-        source: 'NSE search',
+        source: 'Twelve Data search',
         ttlLabel: '10m',
         cacheHit: false,
         lastUpdated: new Date(),
@@ -386,7 +280,7 @@ export async function searchStocks(query: string): Promise<SearchResult> {
       return {
         symbols: stale.data,
         provenance: buildProvenance({
-          source: 'NSE search',
+          source: 'Twelve Data search',
           ttlLabel: '10m',
           cacheHit: true,
           lastUpdated: new Date(stale.timestamp),
@@ -399,7 +293,7 @@ export async function searchStocks(query: string): Promise<SearchResult> {
     return {
       symbols: [],
       provenance: buildProvenance({
-        source: 'NSE search',
+        source: 'Twelve Data search',
         ttlLabel: '10m',
         cacheHit: false,
         lastUpdated: new Date(),

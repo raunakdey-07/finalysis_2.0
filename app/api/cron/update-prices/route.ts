@@ -115,7 +115,7 @@ export async function GET(request: NextRequest) {
 
     const snapshot = {
       updatedAt: new Date().toISOString(),
-      source: 'Finnhub close snapshot',
+      source: 'Twelve Data close snapshot',
       totalSymbols: targetSymbols.length,
       succeeded: Object.keys(items).length,
       failed: failures.length,
