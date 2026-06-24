@@ -8,10 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "symbols:validate": "node scripts/validate-symbol-index.mjs",
-    "symbols:sync": "node scripts/sync-nse-symbols.mjs",
-    "symbols:enrich-industries": "node scripts/enrich-nse-industries.mjs",
-    "stocks:build": "node scripts/build-stocks-dataset.mjs",
+    "stocks:sync": "node scripts/sync-nse-symbols.mjs",
     "stocks:validate": "node scripts/validate-stocks-dataset.mjs"
   },
   "dependencies": {

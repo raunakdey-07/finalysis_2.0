@@ -19,12 +19,22 @@ No jargon. No overwhelming data. Just clear verdicts for everyday investors.
 - **8 Popular Stocks** — ITC, TCS, Reliance, HDFC Bank, Infosys, Airtel, HUL, Asian Paints
 - **Human-Friendly Search** — Search by company name, alias, or ticker (e.g. `Bajaj Housing Finance`, `hdfc`, `ITC.NS`)
 - **Full Local Coverage** — 2300+ active NSE stocks in a local dataset with sector + industry context for filterable discovery
-- **Real-time Prices** — From NSE public endpoints (10min cache)
+- **Real-time Prices** — From Yahoo Finance with a 10min cache and end-of-day NSE snapshot fallback
 - **Graceful Not-Found Handling** — Invalid stocks return clear “Data unavailable” state
 - **Fundamental Data** — Scraped from Screener.in (60-day cache)
 - **News Sentiment** — Curated Google News RSS blend with relevance scoring and professional fallback resources
 - **Mobile Friendly** — Works on any device
 - **Zero Cost** — No paid APIs required
+
+## Backend
+
+Finalysis now runs on a split backend:
+
+- Live quotes and symbol search use Yahoo Finance with Redis caching and a circuit breaker.
+- Daily price snapshots are written by `/api/cron/update-prices` after market close.
+- Fundamentals and valuation checks still come from Screener.in.
+- News and sentiment come from Google News RSS plus fallback market sources.
+- The canonical stock universe lives in `data/stocks.json` and is refreshed from NSE data.
 
 ## Tech Stack
 
@@ -34,7 +44,7 @@ No jargon. No overwhelming data. Just clear verdicts for everyday investors.
 | Language | TypeScript |
 | Styling | Tailwind CSS 4 |
 | Hosting | Vercel |
-| Data | NSE, Screener.in, Google News RSS |
+| Data | Yahoo Finance, NSE snapshot, Screener.in, Google News RSS |
 
 ## Run Locally
 
@@ -53,12 +63,6 @@ Set your canonical site URL (recommended for SEO routes):
 echo "NEXT_PUBLIC_SITE_URL=https://your-domain.com" > .env.local
 ```
 
-To run frontend + backend helper server together:
-
-\`\`\`bash
-npm run dev:all
-\`\`\`
-
 ## API Endpoints
 
 | Endpoint | Description | Rate Limit |
@@ -74,23 +78,21 @@ npm run dev:all
 
 | Source | Data | Cache TTL |
 |--------|------|-----------|
-| NSE public endpoints | Live prices, change % | 10 minutes |
+| Yahoo Finance | Live prices, symbol search | 10 minutes |
+| NSE daily snapshot | End-of-day prices for cron fallbacks | 1 day |
 | Screener.in (scraped) | P/E, P/B, ROE, ROCE, etc. | 60 days |
 | Google News RSS | Headlines, sentiment | 8 hours |
 
 ## Maintenance
 
-Refresh the local NSE symbol index (merged with existing aliases):
+Refresh the local stock universe (merged with existing aliases):
 
 ```bash
-npm run symbols:sync
-npm run symbols:validate
-npm run symbols:enrich-industries
-npm run stocks:build
+npm run stocks:sync
 npm run stocks:validate
 ```
 
-`symbols:sync` now refreshes active NSE symbols, enriches industries, and auto-rebuilds `data/stocks.json`.
+`stocks:sync` refreshes `data/stocks.json` directly from NSE and preserves aliases plus sector metadata.
 
 Pre-freeze quality checks:
 
