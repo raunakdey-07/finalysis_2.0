@@ -8,6 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "stocks:sync": "node scripts/sync-nse-symbols.mjs",
     "stocks:validate": "node scripts/validate-stocks-dataset.mjs"
   },
@@ -35,6 +37,7 @@
     "eslint-config-next": "16.1.4",
     "pnpm": "^10.28.1",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^1.6.0"
   }
 }

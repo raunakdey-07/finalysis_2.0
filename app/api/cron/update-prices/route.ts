@@ -65,16 +65,19 @@ async function runWithConcurrency<T, R>(
 export async function GET(request: NextRequest) {
   const start = Date.now();
 
-  try {
-    const cronSecret = process.env.CRON_SECRET;
-    const vercelCron = request.headers.get('x-vercel-cron') === '1';
-    if (cronSecret) {
-      const authHeader = request.headers.get('authorization');
-      if (!vercelCron && authHeader !== `Bearer ${cronSecret}`) {
-        return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-      }
+  // Default-deny: only allow Vercel's trusted cron header, or a valid
+  // bearer token when CRON_SECRET is configured. Never allow unauthenticated
+  // invocations — this endpoint fans out to thousands of upstream requests.
+  const vercelCron = request.headers.get('x-vercel-cron') === '1';
+  const cronSecret = process.env.CRON_SECRET;
+  if (!vercelCron) {
+    const authHeader = request.headers.get('authorization');
+    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
+  }
 
+  try {
     const searchParams = request.nextUrl.searchParams;
     const limitParam = parseNumberParam(searchParams.get('limit'));
     const envLimit = parseNumberParam(process.env.PRICE_SNAPSHOT_LIMIT ?? null);

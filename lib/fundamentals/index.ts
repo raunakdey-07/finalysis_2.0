@@ -7,7 +7,7 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 
 const NUMBER_CLEAN = /[,\s₹%]/g;
 
-function parseNumber(value: string | undefined): number | null {
+export function parseNumber(value: string | undefined): number | null {
   if (!value) return null;
   const cleaned = value.replace(NUMBER_CLEAN, '').trim();
   const num = parseFloat(cleaned);
@@ -18,7 +18,7 @@ function parseNumber(value: string | undefined): number | null {
  * Extract metric value from Screener.in HTML.
  * Structure: <li ...><span class="name">Label</span><span class="value">...<span class="number">VALUE</span>...</span></li>
  */
-function extractMetric(html: string, label: string): number | null {
+export function extractMetric(html: string, label: string): number | null {
   // Match: <span class="name">\s*Label\s*</span>...<span class="number">VALUE</span>
   const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const regex = new RegExp(
@@ -29,7 +29,7 @@ function extractMetric(html: string, label: string): number | null {
   return parseNumber(match?.[1]);
 }
 
-function extractCompanyName(html: string): string | null {
+export function extractCompanyName(html: string): string | null {
   // <h1 class="...">Company Name</h1>
   const match = html.match(/<h1[^>]*>([^<]+)</i);
   return match?.[1]?.trim() || null;

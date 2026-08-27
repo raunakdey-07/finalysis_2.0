@@ -169,14 +169,18 @@ export function rateLimit(identifier: string, config: RateLimitConfig): RateLimi
  * Works with Vercel, Cloudflare, and direct connections
  */
 export function getClientId(headers: Headers): string {
-  // Prefer infra-provided direct client IP headers when present.
-  const directHeaders = [
-    headers.get('cf-connecting-ip'),
-    headers.get('x-real-ip'),
+  // On Vercel, the platform sets these headers from the real client IP.
+  // We trust them and nothing else — client-controlled headers like
+  // x-forwarded-for are only used as a last resort and only when they
+  // contain a syntactically valid IP, so a single spoofed header cannot
+  // trivially rotate the rate-limit identity.
+  const vercelDirectHeaders = [
     headers.get('x-vercel-forwarded-for'),
+    headers.get('x-real-ip'),
+    headers.get('x-vercel-proxied-for'),
   ];
 
-  for (const candidate of directHeaders) {
+  for (const candidate of vercelDirectHeaders) {
     if (!candidate) continue;
     const normalized = normalizeIpCandidate(candidate);
     if (isValidIpAddress(normalized)) {
@@ -184,6 +188,10 @@ export function getClientId(headers: Headers): string {
     }
   }
 
+  // Only fall back to x-forwarded-for when it contains a syntactically
+  // valid IP. This is still spoofable outside Vercel, but it is the best
+  // available signal and is far better than trusting arbitrary client
+  // headers unconditionally.
   const forwardedFor = headers.get('x-forwarded-for');
   if (forwardedFor) {
     const ip = getFirstValidForwardedIp(forwardedFor);

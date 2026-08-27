@@ -5,7 +5,7 @@
 
 import { StockFundamentals, StockMetrics, StockPrice } from '@/types';
 
-type SectorProfile = {
+export type SectorProfile = {
   key: 'banking' | 'technology' | 'consumer' | 'pharma' | 'capital' | 'energy' | 'metals' | 'general';
   label: string;
   peLow: number;
@@ -193,7 +193,7 @@ function inferSectorProfile(industry: string): SectorProfile {
 /**
  * Calculate valuation score based on P/E and P/B ratios
  */
-function calculateValuationScore(fundamentals: StockFundamentals, profile: SectorProfile): { score: number; explanation: string } {
+export function calculateValuationScore(fundamentals: StockFundamentals, profile: SectorProfile): { score: number; explanation: string } {
   let score = 50; // Start with neutral score
   const factors: string[] = [`Using ${profile.label} valuation bands`];
 
@@ -239,7 +239,7 @@ function calculateValuationScore(fundamentals: StockFundamentals, profile: Secto
 /**
  * Calculate growth score based on EPS and historical performance
  */
-function calculateGrowthScore(fundamentals: StockFundamentals): { score: number; explanation: string } {
+export function calculateGrowthScore(fundamentals: StockFundamentals): { score: number; explanation: string } {
   let score = 50;
   const factors: string[] = [];
 
@@ -281,7 +281,7 @@ function calculateGrowthScore(fundamentals: StockFundamentals): { score: number;
 /**
  * Calculate profitability score
  */
-function calculateProfitabilityScore(fundamentals: StockFundamentals, profile: SectorProfile): { score: number; explanation: string } {
+export function calculateProfitabilityScore(fundamentals: StockFundamentals, profile: SectorProfile): { score: number; explanation: string } {
   let score = 50;
   const factors: string[] = [`Using ${profile.label} quality bands`];
 
@@ -344,7 +344,7 @@ function calculateProfitabilityScore(fundamentals: StockFundamentals, profile: S
 /**
  * Calculate momentum score based on price performance
  */
-function calculateMomentumScore(price?: StockPrice | null): { score: number; explanation: string } {
+export function calculateMomentumScore(price?: StockPrice | null): { score: number; explanation: string } {
   if (!price) {
     return {
       score: 50,

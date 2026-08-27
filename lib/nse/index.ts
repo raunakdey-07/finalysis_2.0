@@ -2,7 +2,7 @@ import { Provenance, StockPrice } from '@/types';
 import cache from '@/lib/cache';
 import { getDailyPricesSnapshot } from '@/lib/nse/daily-prices';
 import { fetchYahooQuote, searchYahooSymbols } from '@/lib/yahoo';
-const QUOTE_TTL_MS = 10 * 60 * 1000; // 5–15m window; choose 10m middle
+const QUOTE_TTL_MS = 10 * 60 * 1000; // 10 min live-cache TTL
 const SEARCH_TTL_MS = 10 * 60 * 1000;
 const CIRCUIT_BREAKER_THRESHOLD = 4;
 const CIRCUIT_BREAKER_COOLDOWN_MS = 60 * 1000;
@@ -104,63 +104,12 @@ export type QuoteFetchOptions = {
 export async function fetchNSEQuote(symbol: string, options: QuoteFetchOptions = {}): Promise<QuoteResult> {
   const allowSnapshot = options.allowSnapshot !== false;
   const cacheKey = `nse_quote_${symbol}`;
-  const snapshotCacheKey = `nse_quote_snapshot_${symbol}`;
 
-  if (allowSnapshot) {
-    const cachedSnapshot = cache.getEntry<StockPrice>(snapshotCacheKey);
-    const cachedSnapshotTime = cachedSnapshot ? new Date(cachedSnapshot.data.timestamp).getTime() : NaN;
-    const cachedSnapshotAgeHours = cachedSnapshot ? (Date.now() - cachedSnapshotTime) / (1000 * 60 * 60) : Infinity;
-    const freshCachedSnapshot = cachedSnapshot && Number.isFinite(cachedSnapshotAgeHours) && cachedSnapshotAgeHours <= 48;
-
-    if (freshCachedSnapshot) {
-      return {
-        price: cachedSnapshot.data,
-        provenance: buildProvenance({
-          source: 'Daily close snapshot (Redis)',
-          ttlLabel: '1d',
-          cacheHit: true,
-          lastUpdated: new Date(cachedSnapshot.data.timestamp),
-          confidence: 'medium',
-          warnings: ['Daily snapshot used; prices update after market close.'],
-        }),
-      };
-    }
-
-    const snapshot = await getDailyPricesSnapshot();
-    if (snapshot && snapshot.items?.[symbol]) {
-      const snapshotPrice = snapshot.items[symbol];
-      const snapshotUpdatedAt = new Date(snapshot.updatedAt);
-      const snapshotAgeHours = (Date.now() - snapshotUpdatedAt.getTime()) / (1000 * 60 * 60);
-      const staleSnapshot = !Number.isFinite(snapshotAgeHours) || snapshotAgeHours > 48;
-
-      if (staleSnapshot) {
-        // Skip stale snapshots so live fetch can recover data if cron has stalled.
-      } else {
-        const normalizedPrice: StockPrice = {
-          ...snapshotPrice,
-          timestamp: snapshotPrice.timestamp instanceof Date
-            ? snapshotPrice.timestamp
-            : new Date(snapshotPrice.timestamp),
-        };
-
-        cache.set(snapshotCacheKey, normalizedPrice, QUOTE_TTL_MS);
-        return {
-          price: normalizedPrice,
-          provenance: buildProvenance({
-            source: 'Daily close snapshot (Redis)',
-            ttlLabel: '1d',
-            cacheHit: true,
-            lastUpdated: new Date(snapshot.updatedAt),
-            confidence: 'medium',
-            warnings: ['Daily snapshot used; prices update after market close.'],
-          }),
-        };
-      }
-    }
-  }
+  // Priority: live cache → live fetch → snapshot fallback → unavailable.
+  // The daily snapshot is end-of-day data only and must not override
+  // a live source during market hours.
 
   const cached = cache.getEntry<StockPrice>(cacheKey);
-
   if (cached) {
     return {
       price: cached.data,
@@ -176,9 +125,7 @@ export async function fetchNSEQuote(symbol: string, options: QuoteFetchOptions =
 
   try {
     const stockPrice = await withRetries('quote', async () => fetchYahooQuote(symbol));
-
     cache.set(cacheKey, stockPrice, QUOTE_TTL_MS);
-
     return {
       price: stockPrice,
       provenance: buildProvenance({
@@ -190,12 +137,42 @@ export async function fetchNSEQuote(symbol: string, options: QuoteFetchOptions =
       }),
     };
   } catch (error) {
-    const warnings = [
-      'Live fetch failed; serving stale cache if available.',
-      error instanceof Error ? error.message : 'Unknown error',
-    ];
+    const upstreamError = error instanceof Error ? error.message : 'Unknown error';
 
-    // Re-fetch to avoid TS narrowing after early return
+    // Live path failed — try daily snapshot as last resort.
+    if (allowSnapshot) {
+      try {
+        const snapshot = await getDailyPricesSnapshot();
+        if (snapshot && snapshot.items?.[symbol]) {
+          const snapshotPrice = snapshot.items[symbol];
+          const snapshotUpdatedAt = new Date(snapshot.updatedAt);
+          const snapshotAgeHours = (Date.now() - snapshotUpdatedAt.getTime()) / (1000 * 60 * 60);
+          if (Number.isFinite(snapshotAgeHours) && snapshotAgeHours <= 48) {
+            const normalizedPrice: StockPrice = {
+              ...snapshotPrice,
+              timestamp: snapshotPrice.timestamp instanceof Date
+                ? snapshotPrice.timestamp
+                : new Date(snapshotPrice.timestamp),
+            };
+            return {
+              price: normalizedPrice,
+              provenance: buildProvenance({
+                source: 'Daily close snapshot (Redis)',
+                ttlLabel: '1d',
+                cacheHit: true,
+                lastUpdated: new Date(snapshot.updatedAt),
+                confidence: 'medium',
+                warnings: [`Live fetch failed (${upstreamError}). Serving stale snapshot.`],
+              }),
+            };
+          }
+        }
+      } catch {
+        // Snapshot fetch also failed; fall through to unavailable.
+      }
+    }
+
+    // Try stale live cache one more time.
     const stale = cache.getEntry<StockPrice>(cacheKey);
     if (stale) {
       return {
@@ -206,7 +183,7 @@ export async function fetchNSEQuote(symbol: string, options: QuoteFetchOptions =
           cacheHit: true,
           lastUpdated: new Date(stale.timestamp),
           confidence: 'medium',
-          warnings,
+          warnings: [`Live fetch failed (${upstreamError}). Serving stale cached price.`],
         }),
       };
     }
@@ -219,21 +196,32 @@ export async function fetchNSEQuote(symbol: string, options: QuoteFetchOptions =
         cacheHit: false,
         lastUpdated: new Date(),
         confidence: 'derived',
-        warnings,
+        warnings: [`Live fetch failed (${upstreamError}). No fallback available.`],
       }),
     };
   }
 }
 
-export async function fetchMultipleQuotes(symbols: string[]): Promise<QuoteResult[]> {
-  const promises = symbols.map((symbol) => fetchNSEQuote(symbol));
-  const results = await Promise.all(promises);
-  return results;
-}
-
 export interface SearchResult {
   symbols: string[];
   provenance: Provenance;
+}
+
+export async function fetchMultipleQuotes(symbols: string[], concurrency: number = 4): Promise<QuoteResult[]> {
+  const results: QuoteResult[] = new Array(symbols.length);
+  let nextIndex = 0;
+
+  const runners = Array.from({ length: Math.min(concurrency, symbols.length) }, async () => {
+    while (true) {
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= symbols.length) return;
+      results[index] = await fetchNSEQuote(symbols[index]);
+    }
+  });
+
+  await Promise.all(runners);
+  return results;
 }
 
 export async function searchStocks(query: string): Promise<SearchResult> {
