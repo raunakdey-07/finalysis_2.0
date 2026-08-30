@@ -2,7 +2,7 @@
 
 Finalysis is a zero-budget stock analysis app for Indian equities. It helps users quickly understand whether a company looks fundamentally strong, whether momentum is improving, and whether the current price appears reasonable.
 
-Live: https://finalysis.vercel.app
+Live: https://fin-alysis.vercel.app
 
 ## What it does
 
