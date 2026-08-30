@@ -1,120 +1,148 @@
-# Finalysis
+# Finalysis 2.0
 
-**Simple stock research for India** — Understand any NSE stock in 30 seconds.
+Finalysis is a zero-budget stock analysis app for Indian equities. It helps users quickly understand whether a company looks fundamentally strong, whether momentum is improving, and whether the current price appears reasonable.
 
-🔗 **Live:** [fin-alysis.vercel.app](https://fin-alysis.vercel.app/)
+Live: https://finalysis.vercel.app
 
 ## What it does
 
-Finalysis answers three questions about any NSE stock:
+For any NSE stock, Finalysis brings together:
 
-1. **Is it a good business?** — ROE, ROCE, dividend yield
-2. **Is it getting better?** — Price momentum, news sentiment
-3. **Is the price fair?** — P/E, P/B, book value
+- fundamental screening (P/E, P/B, ROE, ROCE, dividend yield, EPS, book value, leverage)
+- price momentum and recent action
+- market/news sentiment for the stock and broader market
+- a clean, investor-friendly score and recommendation
 
-No jargon. No overwhelming data. Just clear verdicts for everyday investors.
+The app is designed to be simple and fast: one symbol, one overview, one verdict.
 
-## Features
+## Core features
 
-- **8 Popular Stocks** — ITC, TCS, Reliance, HDFC Bank, Infosys, Airtel, HUL, Asian Paints
-- **Human-Friendly Search** — Search by company name, alias, or ticker (e.g. `Bajaj Housing Finance`, `hdfc`, `ITC.NS`)
-- **Full Local Coverage** — 2300+ active NSE stocks in a local dataset with sector + industry context for filterable discovery
-- **Real-time Prices** — From Yahoo Finance with a 10min cache and end-of-day NSE snapshot fallback
-- **Graceful Not-Found Handling** — Invalid stocks return clear “Data unavailable” state
-- **Fundamental Data** — Scraped from Screener.in (60-day cache)
-- **News Sentiment** — Curated Google News RSS blend with relevance scoring and professional fallback resources
-- **Mobile Friendly** — Works on any device
-- **Zero Cost** — No paid APIs required
+- Search and resolve NSE ticker symbols from natural language and user input
+- Local stock universe coverage for a large set of Indian equities
+- Yahoo Finance-backed live quote feed with cache and circuit-breaker protections
+- Daily snapshot fallback for stale/failed pricing scenarios
+- Screener.in fundamentals scraping with cache-aware resilience
+- Google News RSS and fallback sources for sentiment aggregation
+- Recommendation scoring with explainable metric breakdowns
+- Mobile-friendly UI built with Next.js and Tailwind
 
-## Backend
+## Stack
 
-Finalysis now runs on a split backend:
+- Framework: Next.js 16 (App Router)
+- Language: TypeScript
+- UI: React 19 + Tailwind CSS 4
+- Data sources: Yahoo Finance, Screener.in, Google News RSS, local NSE dataset
+- Runtime/cache: Redis for shared cache + in-memory local cache fallbacks
+- Testing: Vitest
 
-- Live quotes and symbol search use Yahoo Finance with Redis caching and a circuit breaker.
-- Daily price snapshots are written by `/api/cron/update-prices` after market close.
-- Fundamentals and valuation checks still come from Screener.in.
-- News and sentiment come from Google News RSS plus fallback market sources.
-- The canonical stock universe lives in `data/stocks.json` and is refreshed from NSE data.
+## Local setup
 
-## Tech Stack
-
-| Layer | Technology |
-|-------|------------|
-| Framework | Next.js 16 (App Router) |
-| Language | TypeScript |
-| Styling | Tailwind CSS 4 |
-| Hosting | Vercel |
-| Data | Yahoo Finance, NSE snapshot, Screener.in, Google News RSS |
-
-## Run Locally
-
-\`\`\`bash
-git clone https://github.com/raunakdey-07/finalysis_2.0.git
-cd finalysis_2.0
-npm install
-npm run dev
-\`\`\`
-
-Open [http://localhost:3000](http://localhost:3000)
-
-Set your canonical site URL (recommended for SEO routes):
+This project uses pnpm.
 
 ```bash
-echo "NEXT_PUBLIC_SITE_URL=https://your-domain.com" > .env.local
+git clone https://github.com/raunakdey-07/finalysis_2.0.git
+cd finalysis_2.0
+pnpm install
+pnpm dev
 ```
 
-## API Endpoints
+Then open http://localhost:3000
 
-| Endpoint | Description | Rate Limit |
-|----------|-------------|------------|
-| \`/api/nse/quote?symbol=ITC\` | Live price | 60/min |
-| \`/api/metrics?symbol=ITC\` | Fundamentals + scores | 30/min |
-| \`/api/news?symbol=ITC\` | News with sentiment | 30/min |
-| `/api/overview?symbol=ITC` | Aggregated payload (quote + metrics + news + sentiment) | 30/min |
-| \`/api/nse/search?q=hdfc\` | Resolve human query to canonical tickers | 20/min |
-| \`/api/nse/search?q=hdfc&sector=Banking\` | Resolve query within a sector filter | 20/min |
+### Environment variables
 
-## Data Sources
+Create a `.env.local` with the site URL and any required secret values:
 
-| Source | Data | Cache TTL |
-|--------|------|-----------|
-| Yahoo Finance | Live prices, symbol search | 10 minutes |
-| NSE daily snapshot | End-of-day prices for cron fallbacks | 1 day |
-| Screener.in (scraped) | P/E, P/B, ROE, ROCE, etc. | 60 days |
-| Google News RSS | Headlines, sentiment | 8 hours |
+```bash
+NEXT_PUBLIC_SITE_URL=https://your-domain.com
+CRON_SECRET=your-very-long-secret
+```
+
+- `NEXT_PUBLIC_SITE_URL` is recommended for canonical URLs and SEO metadata.
+- `CRON_SECRET` protects the price snapshot cron endpoint when it is invoked manually.
+
+## Scripts
+
+```bash
+pnpm dev
+pnpm build
+pnpm start
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm run stocks:sync
+pnpm run stocks:validate
+```
+
+## API surface
+
+| Endpoint | Purpose |
+| --- | --- |
+| `/api/nse/quote?symbol=ITC` | Live price for a symbol |
+| `/api/nse/search?q=hdfc` | Search and normalize ticker symbols |
+| `/api/metrics?symbol=ITC` | Fundamental and scoring data |
+| `/api/news?symbol=ITC` | News + sentiment mix |
+| `/api/overview?symbol=ITC` | Combined quote + metrics + news payload |
+| `/api/cron/update-prices` | Daily snapshot refresh endpoint |
+
+Rate limits are enforced per client IP and endpoint category.
+
+## Data and freshness model
+
+| Source | Purpose | Freshness |
+| --- | --- | --- |
+| Yahoo Finance | Live quote and search data | 10-minute cache |
+| Daily NSE snapshot | End-of-day fallback / stale recovery | 1 day |
+| Screener.in | Valuation and fundamentals | 60-day cache |
+| Google News RSS | Market sentiment and headlines | 8-hour cache |
+| `data/stocks.json` | Canonical Indian stock universe | source-controlled |
 
 ## Maintenance
 
-Refresh the local stock universe (merged with existing aliases):
+Refresh the stock dataset:
 
 ```bash
-npm run stocks:sync
-npm run stocks:validate
+pnpm run stocks:sync
+pnpm run stocks:validate
 ```
 
-`stocks:sync` refreshes `data/stocks.json` directly from NSE and preserves aliases plus sector metadata.
+The stock sync script refreshes the canonical stock list while preserving aliases and metadata where needed.
 
-Pre-freeze quality checks:
+## Cron job
+
+The daily snapshot route is available at:
+
+```text
+/api/cron/update-prices
+```
+
+Manual calls should use a bearer token when `CRON_SECRET` is configured:
 
 ```bash
-npm run lint
-npm run build
+curl -H "Authorization: Bearer $CRON_SECRET" https://your-domain.com/api/cron/update-prices
 ```
 
-Daily price snapshot cron:
+Vercel cron jobs can call this route without the bearer header when the trusted Vercel cron header is present.
 
-- Endpoint: `/api/cron/update-prices`
-- Optional protection: set `CRON_SECRET` and send `Authorization: Bearer <secret>` when calling manually.
-- Vercel cron will keep this updated after market close (weekday schedule).
+## Quality checks
+
+Before shipping, run the same checks used in CI:
+
+```bash
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm run stocks:validate
+pnpm build
+```
 
 ## Disclaimer
 
-⚠️ **This is not financial advice.** Data may be delayed, incomplete, or inaccurate. Always verify from official sources and consult a SEBI-registered advisor before investing.
+This project is for educational and research use only. It does not provide financial advice. Market data may be delayed, incomplete, or inaccurate. Always verify against official sources before making investment decisions.
 
 ## License
 
-MIT — See [LICENSE](LICENSE)
+MIT — see [LICENSE](LICENSE)
 
 ---
 
-Built by [@raunakdey-07](https://github.com/raunakdey-07)
+Built by @raunakdey-07
