@@ -31,7 +31,7 @@ const NewsSection = dynamic(() => import("@/components/home/news-section"), {
         <div className="space-y-3">
           {[1, 2, 3, 4, 5].map((i) => (
             <div key={i} className="flex items-start gap-4 py-3">
-              <div className="mt-2 h-1.5 w-1.5 flex-shrink-0 animate-pulse rounded-full bg-stone-200" />
+              <div className="mt-2 h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-stone-200" />
               <div className="min-w-0 flex-1">
                 <div className="h-4 w-full animate-pulse rounded bg-stone-200" />
                 <div className="mt-2 h-3 w-32 animate-pulse rounded bg-stone-200" />
@@ -892,7 +892,7 @@ export default function Page() {
               onToggle={(event) => setIsSectorFilterOpen((event.currentTarget as HTMLDetailsElement).open)}
               className="relative"
             >
-              <summary className="flex h-[42px] w-10 list-none items-center justify-center rounded-lg border border-stone-300 bg-white text-stone-600 transition hover:border-stone-500 hover:text-stone-800 [&::-webkit-details-marker]:hidden">
+              <summary className="flex h-10.5 w-10 list-none items-center justify-center rounded-lg border border-stone-300 bg-white text-stone-600 transition hover:border-stone-500 hover:text-stone-800 [&::-webkit-details-marker]:hidden">
                 <Funnel className="h-4 w-4" />
                 <span className="sr-only">Filter search by sector</span>
               </summary>
