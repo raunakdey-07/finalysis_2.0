@@ -1,6 +1,7 @@
 import cache from '@/lib/cache';
 import { Provenance, StockFundamentals } from '@/types';
 import { fetchWithTimeout } from '@/lib/utils/fetch-with-timeout';
+import { isValidFundamentals } from './validate';
 
 const FUNDAMENTALS_TTL_MS = 60 * 24 * 60 * 60 * 1000; // ~60 days within 30–90d window
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36';
@@ -124,6 +125,12 @@ export async function fetchFundamentals(symbol: string): Promise<FundamentalsRes
       revenueGrowth: null,
       lastUpdated: new Date(),
     };
+
+    // Validate parsed fundamentals before caching.
+    // Malformed or impossible values must never be cached.
+    if (!isValidFundamentals(fundamentals)) {
+      throw new Error('Parsed fundamentals failed validation');
+    }
 
     cache.set(cacheKey, fundamentals, FUNDAMENTALS_TTL_MS);
 
