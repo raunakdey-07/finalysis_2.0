@@ -136,7 +136,7 @@ export default function AnalysisCards({
               <>
                 <div className="mt-4 flex items-baseline gap-1">
                   <span className={`text-4xl font-semibold ${VERDICT[verdict].text}`}>{score}</span>
-                  <span className="text-base font-medium text-stone-400">/100</span>
+                  <span className="text-base font-medium text-stone-500">/100</span>
                   <ScoreExplanation score={score} metric="businessQuality" />
                 </div>
                 <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-stone-100">
@@ -215,7 +215,7 @@ export default function AnalysisCards({
               <>
                 <div className="mt-4 flex items-baseline gap-1">
                   <span className={`text-4xl font-semibold ${VERDICT[verdict].text}`}>{score}</span>
-                  <span className="text-base font-medium text-stone-400">/100</span>
+                  <span className="text-base font-medium text-stone-500">/100</span>
                   <ScoreExplanation score={score} metric="valuation" />
                 </div>
                 <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-stone-100">
