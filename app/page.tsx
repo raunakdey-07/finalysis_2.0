@@ -1047,7 +1047,7 @@ export default function Page() {
           liveNews={liveNews}
           researchNewsProv={researchNewsProv}
           liveNewsProv={liveNewsProv}
-          onViewChange={setActiveNewsView}
+          onViewChangeAction={setActiveNewsView}
         />
 
           {/* Footer - minimal, trustworthy */}

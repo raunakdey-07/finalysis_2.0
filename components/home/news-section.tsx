@@ -28,7 +28,7 @@ function NewsSkeleton() {
     <div className="space-y-3">
       {[1, 2, 3, 4, 5].map((i) => (
         <div key={i} className="flex items-start gap-4 py-3">
-          <div className="mt-2 h-1.5 w-1.5 flex-shrink-0 animate-pulse rounded-full bg-stone-200" />
+          <div className="mt-2 h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-stone-200" />
           <div className="min-w-0 flex-1">
             <div className="h-4 w-full animate-pulse rounded bg-stone-200" />
             <div className="mt-2 h-3 w-32 animate-pulse rounded bg-stone-200" />
@@ -48,7 +48,7 @@ type NewsSectionProps = {
   liveNews: NewsItem[];
   researchNewsProv: Provenance | null;
   liveNewsProv: Provenance | null;
-  onViewChange: (view: "research" | "live") => void;
+  onViewChangeAction: (view: "research" | "live") => void;
 };
 
 export default function NewsSection({
@@ -60,7 +60,7 @@ export default function NewsSection({
   liveNews,
   researchNewsProv,
   liveNewsProv,
-  onViewChange,
+  onViewChangeAction,
 }: NewsSectionProps) {
   const activeNews = activeView === "research" ? researchNews : liveNews;
   const isResearchView = activeView === "research";
@@ -81,7 +81,7 @@ export default function NewsSection({
           <div className="inline-flex rounded-lg border border-stone-200 bg-stone-50 p-1">
             <button
               type="button"
-              onClick={() => onViewChange("research")}
+              onClick={() => onViewChangeAction("research")}
               className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
                 isResearchView ? "bg-white text-stone-900 shadow-sm" : "text-stone-500 hover:text-stone-800"
               }`}
@@ -92,7 +92,7 @@ export default function NewsSection({
               type="button"
               onClick={() => {
                 if (liveNewsReady) {
-                  onViewChange("live");
+                  onViewChangeAction("live");
                 }
               }}
               disabled={liveButtonDisabled}
@@ -133,7 +133,7 @@ export default function NewsSection({
                     rel="noreferrer"
                     className="group flex items-start gap-4 py-3 first:pt-0 last:pb-0"
                   >
-                    <span className={`mt-2 h-1.5 w-1.5 flex-shrink-0 rounded-full ${SENTIMENT_DOT[sentiment]}`} />
+                    <span className={`mt-2 h-1.5 w-1.5 shrink-0 rounded-full ${SENTIMENT_DOT[sentiment]}`} />
                     <div className="min-w-0 flex-1">
                       <p className="text-sm leading-relaxed text-stone-700 group-hover:text-stone-900">{item.title}</p>
                       <p className="mt-1 text-xs text-stone-500">

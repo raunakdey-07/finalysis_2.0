@@ -1,6 +1,7 @@
 "use client";
 
 import type { StockFundamentals, StockMetrics } from "@/types";
+import { MetricExplanation, ScoreExplanation } from "@/components/ui/metric-explanation";
 
 const VERDICT = {
   strong: {
@@ -75,6 +76,24 @@ type MetricsLike = Pick<StockMetrics, "profitabilityScore" | "valuationScore"> &
   fundamentals?: StockFundamentals | null;
 };
 
+type MetricRowProps = {
+  label: string;
+  value: React.ReactNode;
+  metric?: React.ReactNode;
+};
+
+function MetricRow({ label, value, metric }: MetricRowProps) {
+  return (
+    <div className="flex items-start justify-between gap-3 text-sm">
+      <span className="text-stone-500">{label}</span>
+      <span className="inline-flex items-center gap-1.5 font-medium text-stone-700">
+        {value}
+        {metric}
+      </span>
+    </div>
+  );
+}
+
 type AnalysisCardsProps = {
   loadingMetrics: boolean;
   loadingQuote: boolean;
@@ -106,30 +125,28 @@ export default function AnalysisCards({
         return (
           <div className={`rounded-xl border-t-4 ${VERDICT[verdict].accent.replace("border-l-", "border-t-")} bg-white p-5 shadow-sm`}>
             <div className="flex items-center justify-between">
-              <p className="text-sm font-medium text-stone-600">Good business?</p>
+              <div>
+                <p className="text-sm font-medium text-stone-600">Business quality</p>
+                <p className="mt-1 text-xs text-stone-500">Screening score</p>
+              </div>
               {metrics && <span className={`text-xs font-semibold ${VERDICT[verdict].text}`}>{scoreLabel(score)}</span>}
             </div>
 
             {metrics ? (
               <>
-                <p className={`mt-4 text-4xl font-semibold ${VERDICT[verdict].text}`}>{score}</p>
+                <div className="mt-4 flex items-baseline gap-1">
+                  <span className={`text-4xl font-semibold ${VERDICT[verdict].text}`}>{score}</span>
+                  <span className="text-base font-medium text-stone-400">/100</span>
+                  <ScoreExplanation score={score} metric="businessQuality" />
+                </div>
                 <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-stone-100">
                   <div className={`h-1.5 rounded-full transition-all ${VERDICT[verdict].bg}`} style={{ width: `${score}%` }} />
                 </div>
 
                 <div className="mt-5 space-y-2.5 border-t border-stone-100 pt-4">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-stone-500">ROE</span>
-                    <span className="font-medium text-stone-700">{fmt2(metrics.fundamentals?.roe)}%</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-stone-500">ROCE</span>
-                    <span className="font-medium text-stone-700">{fmt2(metrics.fundamentals?.roce)}%</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-stone-500">Dividend</span>
-                    <span className="font-medium text-stone-700">{fmt2(metrics.fundamentals?.dividendYield)}%</span>
-                  </div>
+                  <MetricRow label="ROE" value={`${fmt2(metrics.fundamentals?.roe)}%`} metric={<MetricExplanation metric="roe" />} />
+                  <MetricRow label="ROCE" value={`${fmt2(metrics.fundamentals?.roce)}%`} metric={<MetricExplanation metric="roce" />} />
+                  <MetricRow label="Dividend" value={`${fmt2(metrics.fundamentals?.dividendYield)}%`} metric={<MetricExplanation metric="dividendYield" />} />
                 </div>
               </>
             ) : (
@@ -147,7 +164,10 @@ export default function AnalysisCards({
         return (
           <div className={`rounded-xl border-t-4 ${VERDICT[verdict].accent.replace("border-l-", "border-t-")} bg-white p-5 shadow-sm`}>
             <div className="flex items-center justify-between">
-              <p className="text-sm font-medium text-stone-600">Getting better?</p>
+              <div>
+                <p className="text-sm font-medium text-stone-600">Recent signals</p>
+                <p className="mt-1 text-xs text-stone-500">Market & news</p>
+              </div>
               <span className={`text-xs font-semibold ${VERDICT[verdict].text}`}>
                 {sentimentLabel === "positive" ? "Yes" : sentimentLabel === "negative" ? "No" : "Mixed"}
               </span>
@@ -166,20 +186,9 @@ export default function AnalysisCards({
                 </div>
 
                 <div className="mt-5 space-y-2.5 border-t border-stone-100 pt-4">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-stone-500">Today</span>
-                    <span className={`font-medium ${effectiveChange >= 0 ? "text-teal-600" : "text-amber-600"}`}>
-                      {effectiveChange >= 0 ? "Up" : "Down"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-stone-500">News tone</span>
-                    <span className="font-medium capitalize text-stone-700">{sentimentLabel}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-stone-500">Articles</span>
-                    <span className="font-medium text-stone-700">{newsCount}</span>
-                  </div>
+                  <MetricRow label="Today" value={<span className={effectiveChange >= 0 ? "text-teal-600" : "text-amber-600"}>{effectiveChange >= 0 ? "Up" : "Down"}</span>} />
+                  <MetricRow label="News tone" value={<span className="capitalize">{sentimentLabel}</span>} metric={<MetricExplanation metric="newsSentiment" />} />
+                  <MetricRow label="Articles" value={newsCount} />
                 </div>
               </>
             )}
@@ -195,30 +204,28 @@ export default function AnalysisCards({
         return (
           <div className={`rounded-xl border-t-4 ${VERDICT[verdict].accent.replace("border-l-", "border-t-")} bg-white p-5 shadow-sm`}>
             <div className="flex items-center justify-between">
-              <p className="text-sm font-medium text-stone-600">Fair price?</p>
+              <div>
+                <p className="text-sm font-medium text-stone-600">Fair price?</p>
+                <p className="mt-1 text-xs text-stone-500">Valuation</p>
+              </div>
               {metrics && <span className={`text-xs font-semibold ${VERDICT[verdict].text}`}>{scoreLabel(score)}</span>}
             </div>
 
             {metrics ? (
               <>
-                <p className={`mt-4 text-4xl font-semibold ${VERDICT[verdict].text}`}>{score}</p>
+                <div className="mt-4 flex items-baseline gap-1">
+                  <span className={`text-4xl font-semibold ${VERDICT[verdict].text}`}>{score}</span>
+                  <span className="text-base font-medium text-stone-400">/100</span>
+                  <ScoreExplanation score={score} metric="valuation" />
+                </div>
                 <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-stone-100">
                   <div className={`h-1.5 rounded-full transition-all ${VERDICT[verdict].bg}`} style={{ width: `${score}%` }} />
                 </div>
 
                 <div className="mt-5 space-y-2.5 border-t border-stone-100 pt-4">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-stone-500">P/E</span>
-                    <span className="font-medium text-stone-700">{fmt2(metrics.fundamentals?.peRatio)}x</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-stone-500">P/B</span>
-                    <span className="font-medium text-stone-700">{fmt2(metrics.fundamentals?.pbRatio)}x</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-stone-500">Book value</span>
-                    <span className="font-medium text-stone-700">₹{fmt2(metrics.fundamentals?.bookValue)}</span>
-                  </div>
+                  <MetricRow label="P/E" value={`${fmt2(metrics.fundamentals?.peRatio)}x`} metric={<MetricExplanation metric="peRatio" />} />
+                  <MetricRow label="P/B" value={`${fmt2(metrics.fundamentals?.pbRatio)}x`} metric={<MetricExplanation metric="pbRatio" />} />
+                  <MetricRow label="Book value" value={`₹${fmt2(metrics.fundamentals?.bookValue)}`} metric={<MetricExplanation metric="bookValue" />} />
                 </div>
               </>
             ) : (
