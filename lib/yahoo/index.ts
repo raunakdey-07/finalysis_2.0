@@ -81,7 +81,21 @@ async function fetchYahooChart(symbol: string): Promise<YahooChartResponse> {
 function toPrice(result: NonNullable<NonNullable<YahooChartResponse['chart']>['result']>[number]): StockPrice | null {
   const meta = result.meta;
   const currentPrice = meta?.regularMarketPrice;
+
+  // Currency validation: NSE equities must be quoted in INR.
+  // Reject quotes in USD/other currencies to prevent unit errors.
+  const currency = meta?.currency;
+  if (currency === 'USD' || currency === 'EUR' || currency === 'GBP') {
+    return null;
+  }
+
   if (typeof currentPrice !== 'number' || !Number.isFinite(currentPrice) || currentPrice <= 0) {
+    return null;
+  }
+
+  // Sanity check: NSE equity prices should not be < ₹0.10 or > ₹50,000.
+  // This catches decimal/unit errors (e.g., 0.0017 instead of 14.3).
+  if (currentPrice < 0.10 || currentPrice > 50000) {
     return null;
   }
 
