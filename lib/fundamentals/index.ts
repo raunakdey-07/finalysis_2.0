@@ -100,11 +100,15 @@ export async function fetchFundamentals(symbol: string): Promise<FundamentalsRes
     const companyName = extractCompanyName(html) || `${slug} Limited`;
     const industry = extractIndustry(html) || 'Unknown';
 
+    // P/E is not meaningful when earnings are negative or zero.
+    // Do not manufacture a P/E ratio from negative EPS.
+    const peRatioFinal = (epsTtm !== null && epsTtm <= 0) ? null : peRatio;
+
     // Get P/B from price / book value if we have both
     const currentPrice = extractMetric(html, 'Current Price');
     const calculatedPB = (currentPrice && bookValue && bookValue > 0) ? currentPrice / bookValue : null;
 
-    if (marketCap === null && peRatio === null && pbRatio === null) {
+    if (marketCap === null && peRatioFinal === null && pbRatio === null) {
       throw new Error('Missing key metrics');
     }
 
@@ -112,7 +116,7 @@ export async function fetchFundamentals(symbol: string): Promise<FundamentalsRes
       symbol,
       companyName,
       marketCap: marketCap ?? 0,
-      peRatio,
+      peRatio: peRatioFinal,
       pbRatio: calculatedPB,
       dividendYield,
       epsLast4Quarters: epsTtm,

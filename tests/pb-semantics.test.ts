@@ -4,23 +4,34 @@
  */
 import { describe, it, expect } from 'vitest';
 
+const calculatePB = (currentPrice: number, bookValue: number | null | undefined): number | null => {
+  if (!currentPrice || !bookValue || bookValue <= 0) return null;
+  return currentPrice / bookValue;
+};
+
 describe('P/B semantics', () => {
   it('calculates P/B correctly when bookValue is per-share', () => {
-    const currentPrice = 1500;
-    const bookValuePerShare = 300;
-    const pb = currentPrice / bookValuePerShare;
+    const pb = calculatePB(1500, 300);
     expect(pb).toBe(5);
   });
 
-  it('returns null when bookValue is zero or missing', () => {
-    const price = 1500;
-    const bookValue = 0;
-    const pb = bookValue > 0 ? price / bookValue : null;
+  it('returns null when bookValue is zero', () => {
+    const pb = calculatePB(1500, 0);
     expect(pb).toBeNull();
   });
 
-  it('rejects negative book value', () => {
-    const bookValue = -100;
-    expect(bookValue > 0).toBe(false);
+  it('returns null when bookValue is negative', () => {
+    const pb = calculatePB(1500, -100);
+    expect(pb).toBeNull();
+  });
+
+  it('returns null when bookValue is missing', () => {
+    const pb = calculatePB(1500, null);
+    expect(pb).toBeNull();
+  });
+
+  it('returns null when bookValue is undefined', () => {
+    const pb = calculatePB(1500, undefined);
+    expect(pb).toBeNull();
   });
 });

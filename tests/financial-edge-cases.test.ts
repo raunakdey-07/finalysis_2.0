@@ -3,6 +3,27 @@
  * Covers zero, negative, NaN, Infinity, and missing data scenarios.
  */
 import { describe, it, expect } from 'vitest';
+import { isValidFundamentals } from '@/lib/fundamentals/validate';
+import { StockFundamentals } from '@/types';
+
+const baseFundamentals = (overrides: Partial<StockFundamentals> = {}): StockFundamentals => ({
+  symbol: 'TEST',
+  companyName: 'Test Company',
+  marketCap: 100000,
+  peRatio: 20,
+  pbRatio: 2,
+  dividendYield: 1.5,
+  epsLast4Quarters: 10,
+  bookValue: 100,
+  faceValue: 10,
+  industry: 'Technology',
+  roe: 15,
+  roce: 12,
+  debtToEquity: 0.5,
+  revenueGrowth: 10,
+  lastUpdated: new Date(),
+  ...overrides,
+});
 
 describe('Financial edge cases', () => {
   describe('zero revenue', () => {
@@ -32,17 +53,23 @@ describe('Financial edge cases', () => {
   });
 
   describe('negative earnings', () => {
-    it('should handle negative EPS', () => {
-      const eps = -5;
-      const isProfitable = eps > 0;
-      expect(isProfitable).toBe(false);
+    it('should handle negative EPS as valid data', () => {
+      const fundamentals = baseFundamentals({ epsLast4Quarters: -5 });
+      expect(isValidFundamentals(fundamentals)).toBe(true);
     });
   });
 
   describe('negative book value', () => {
-    it('should reject negative book value', () => {
-      const bookValue = -100;
-      expect(bookValue > 0).toBe(false);
+    it('should accept negative book value as valid data', () => {
+      const fundamentals = baseFundamentals({ bookValue: -3.26 });
+      expect(isValidFundamentals(fundamentals)).toBe(true);
+    });
+  });
+
+  describe('negative ROE and ROCE', () => {
+    it('should accept negative ROE and ROCE as valid data', () => {
+      const fundamentals = baseFundamentals({ roe: -20, roce: -1.92 });
+      expect(isValidFundamentals(fundamentals)).toBe(true);
     });
   });
 
@@ -51,6 +78,8 @@ describe('Financial edge cases', () => {
       expect(Number.isFinite(NaN)).toBe(false);
       expect(Number.isFinite(Infinity)).toBe(false);
       expect(Number.isFinite(-Infinity)).toBe(false);
+      expect(isValidFundamentals(baseFundamentals({ marketCap: NaN }))).toBe(false);
+      expect(isValidFundamentals(baseFundamentals({ bookValue: Infinity }))).toBe(false);
     });
   });
 
@@ -62,6 +91,11 @@ describe('Financial edge cases', () => {
       expect(zero === null).toBe(false);
       expect(missing ?? 0).toBe(0);
       expect(zero ?? 0).toBe(0);
+    });
+
+    it('should accept missing optional metrics', () => {
+      const fundamentals = baseFundamentals({ peRatio: null, pbRatio: null, roe: null, roce: null });
+      expect(isValidFundamentals(fundamentals)).toBe(true);
     });
   });
 

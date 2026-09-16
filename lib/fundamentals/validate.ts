@@ -12,10 +12,12 @@ export function isValidFundamentals(f: Partial<StockFundamentals>): boolean {
   if (typeof f.companyName !== 'string' || f.companyName.trim().length < 2) return false;
 
   // Numeric fields must be finite numbers or null (not NaN/Infinity)
+  // Negative book value is financially meaningful (companies with negative net assets)
+  // Negative ROE/ROCE are legitimate signals, not invalid data
   const numericFields = [
     'marketCap', 'peRatio', 'pbRatio', 'dividendYield',
     'epsLast4Quarters', 'bookValue', 'roe', 'roce', 'debtToEquity',
-    'faceValue', 'revenueGrowth',
+    'faceValue', 'revenueGrowth'
   ] as const;
 
   for (const key of numericFields) {
@@ -24,7 +26,9 @@ export function isValidFundamentals(f: Partial<StockFundamentals>): boolean {
     if (val === null) continue; // null is acceptable (unavailable)
     if (typeof val !== 'number') return false;
     if (!Number.isFinite(val)) return false; // reject NaN/Infinity
-    if (val < 0 && (key === 'marketCap' || key === 'bookValue' || key === 'faceValue')) return false; // negative market cap/book value impossible
+    // Market cap and face value genuinely cannot be negative for valid securities.
+    // Book value CAN be negative (negative net assets) — do NOT reject.
+    if (val < 0 && (key === 'marketCap' || key === 'faceValue')) return false;
   }
 
   return true;
