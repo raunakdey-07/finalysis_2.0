@@ -224,34 +224,34 @@ describe('calculateMomentumScore', () => {
 });
 
 describe('getRecommendation', () => {
-  it('returns Strong Buy for score >= 75', () => {
-    expect(getRecommendation(75)).toBe('Strong Buy');
-    expect(getRecommendation(80)).toBe('Strong Buy');
-    expect(getRecommendation(100)).toBe('Strong Buy');
+  it('returns High Score for score >= 75', () => {
+    expect(getRecommendation(75)).toBe('High Score');
+    expect(getRecommendation(80)).toBe('High Score');
+    expect(getRecommendation(100)).toBe('High Score');
   });
 
-  it('returns Buy for score >= 60 and < 75', () => {
-    expect(getRecommendation(60)).toBe('Buy');
-    expect(getRecommendation(64)).toBe('Buy');
-    expect(getRecommendation(74)).toBe('Buy');
+  it('returns Moderate-High Score for score >= 60 and < 75', () => {
+    expect(getRecommendation(60)).toBe('Moderate-High Score');
+    expect(getRecommendation(64)).toBe('Moderate-High Score');
+    expect(getRecommendation(74)).toBe('Moderate-High Score');
   });
 
-  it('returns Hold for score >= 45 and < 60', () => {
-    expect(getRecommendation(45)).toBe('Hold');
-    expect(getRecommendation(50)).toBe('Hold');
-    expect(getRecommendation(59)).toBe('Hold');
+  it('returns Neutral Score for score >= 45 and < 60', () => {
+    expect(getRecommendation(45)).toBe('Neutral Score');
+    expect(getRecommendation(50)).toBe('Neutral Score');
+    expect(getRecommendation(59)).toBe('Neutral Score');
   });
 
-  it('returns Sell for score >= 30 and < 45', () => {
-    expect(getRecommendation(30)).toBe('Sell');
-    expect(getRecommendation(35)).toBe('Sell');
-    expect(getRecommendation(44)).toBe('Sell');
+  it('returns Moderate-Low Score for score >= 30 and < 45', () => {
+    expect(getRecommendation(30)).toBe('Moderate-Low Score');
+    expect(getRecommendation(35)).toBe('Moderate-Low Score');
+    expect(getRecommendation(44)).toBe('Moderate-Low Score');
   });
 
-  it('returns Strong Sell for score < 30', () => {
-    expect(getRecommendation(29)).toBe('Strong Sell');
-    expect(getRecommendation(0)).toBe('Strong Sell');
-    expect(getRecommendation(-1)).toBe('Strong Sell');
+  it('returns Low Score for score < 30', () => {
+    expect(getRecommendation(29)).toBe('Low Score');
+    expect(getRecommendation(0)).toBe('Low Score');
+    expect(getRecommendation(-1)).toBe('Low Score');
   });
 });
 

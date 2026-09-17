@@ -427,12 +427,12 @@ export function calculateMetrics(
 }
 
 /**
- * Get recommendation based on overall score
+ * Get the educational display label based on overall score
  */
 export function getRecommendation(overallScore: number): string {
-  if (overallScore >= 75) return 'Strong Buy';
-  if (overallScore >= 60) return 'Buy';
-  if (overallScore >= 45) return 'Hold';
-  if (overallScore >= 30) return 'Sell';
-  return 'Strong Sell';
+  if (overallScore >= 75) return 'High Score';
+  if (overallScore >= 60) return 'Moderate-High Score';
+  if (overallScore >= 45) return 'Neutral Score';
+  if (overallScore >= 30) return 'Moderate-Low Score';
+  return 'Low Score';
 }

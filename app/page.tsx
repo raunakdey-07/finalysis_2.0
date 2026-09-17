@@ -304,6 +304,8 @@ export default function Page() {
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState<number>(-1);
   const [searchMessage, setSearchMessage] = useState<string | null>(null);
   const searchSuggestionRequestId = useRef(0);
+  const suggestionAbortController = useRef<AbortController | null>(null);
+  const submittedSearchAbortController = useRef<AbortController | null>(null);
   const searchSuggestionCache = useRef<Map<string, SearchSuggestionCacheEntry>>(new Map());
 
   const [{ price, provenance: quoteProv, error: quoteError }, setQuoteState] = useState<QuoteState>({
@@ -589,11 +591,12 @@ export default function Page() {
 
   function openSearchSuggestions(nextSuggestions: StockSearchSuggestion[]) {
     setSearchSuggestions(nextSuggestions);
-    setShowSearchSuggestions(nextSuggestions.length > 0);
+    setShowSearchSuggestions(true);
     setActiveSuggestionIndex(nextSuggestions.length > 0 ? 0 : -1);
   }
 
   function closeSearchSuggestions() {
+    suggestionAbortController.current?.abort();
     searchSuggestionRequestId.current += 1;
     setShowSearchSuggestions(false);
     setActiveSuggestionIndex(-1);
@@ -601,6 +604,8 @@ export default function Page() {
   }
 
   function clearSearchSuggestions() {
+    suggestionAbortController.current?.abort();
+    submittedSearchAbortController.current?.abort();
     searchSuggestionRequestId.current += 1;
     setSearchSuggestions([]);
     setShowSearchSuggestions(false);
@@ -618,6 +623,10 @@ export default function Page() {
     url.searchParams.set("symbol", resolved.symbol);
     window.history.replaceState({}, "", url.toString());
   }
+
+  useEffect(() => () => {
+    submittedSearchAbortController.current?.abort();
+  }, [symbolInput, searchSector, symbol]);
 
   useEffect(() => {
     let cancelled = false;
@@ -644,21 +653,26 @@ export default function Page() {
     }
 
     const requestId = ++searchSuggestionRequestId.current;
+    const controller = new AbortController();
+    suggestionAbortController.current = controller;
     const timeoutId = window.setTimeout(async () => {
-      if (cancelled || requestId !== searchSuggestionRequestId.current) return;
+      if (cancelled || controller.signal.aborted || requestId !== searchSuggestionRequestId.current) return;
       setLoadingSuggestions(true);
+      setShowSearchSuggestions(true);
 
       try {
-        const response = await fetch(`/api/nse/search?${buildSearchParams(query, searchSector).toString()}`);
+        const response = await fetch(`/api/nse/search?${buildSearchParams(query, searchSector).toString()}`, {
+          signal: controller.signal,
+        });
         const json: ApiResponse<StockSearchSuggestion[]> = await response.json();
 
-        if (cancelled || requestId !== searchSuggestionRequestId.current) return;
+        if (cancelled || controller.signal.aborted || requestId !== searchSuggestionRequestId.current) return;
 
         const suggestions = (json.data ?? []).slice(0, 5);
         setCachedSearchSuggestions(searchSuggestionCache.current, cacheKey, suggestions);
         openSearchSuggestions(suggestions);
       } catch {
-        if (cancelled || requestId !== searchSuggestionRequestId.current) return;
+        if (cancelled || controller.signal.aborted || requestId !== searchSuggestionRequestId.current) return;
         clearSearchSuggestions();
       } finally {
         if (!cancelled && requestId === searchSuggestionRequestId.current) {
@@ -669,6 +683,7 @@ export default function Page() {
 
     return () => {
       cancelled = true;
+      controller.abort();
       window.clearTimeout(timeoutId);
     };
   }, [symbolInput, searchSector, symbol]);
@@ -679,12 +694,18 @@ export default function Page() {
 
     setSearchMessage(null);
     closeSearchSuggestions();
+    submittedSearchAbortController.current?.abort();
+    const controller = new AbortController();
+    submittedSearchAbortController.current = controller;
 
     try {
       const query = symbolInput.trim();
       const cacheKey = buildSearchCacheKey(query, searchSector);
-      const res = await fetch(`/api/nse/search?${buildSearchParams(query, searchSector).toString()}`);
+      const res = await fetch(`/api/nse/search?${buildSearchParams(query, searchSector).toString()}`, {
+        signal: controller.signal,
+      });
       const json: ApiResponse<StockSearchSuggestion[]> = await res.json();
+      if (controller.signal.aborted) return;
 
       const candidates = json.data ?? [];
       if (!json.success || candidates.length === 0) {
@@ -717,6 +738,7 @@ export default function Page() {
       const resolved = candidates[0];
       applyResolvedSymbol(resolved);
     } catch {
+      if (controller.signal.aborted) return;
       setSearchMessage("Search unavailable right now. Please try again.");
     }
   }
@@ -757,7 +779,7 @@ export default function Page() {
 
   return (
     <>
-      <DisclaimerModal />
+
       <div className="min-h-screen bg-stone-50 text-stone-900">
         <div className="mx-auto w-full max-w-4xl px-4 py-8 sm:px-6 sm:py-16">
         
@@ -814,9 +836,13 @@ export default function Page() {
           </div>
           <form onSubmit={handleSearch} className="mt-4 flex items-start gap-2">
             <div className="relative flex-1 sm:flex-none sm:w-64">
+              <label htmlFor="stock-search" className="sr-only">Search Stock Symbol</label>
               <input
+                id="stock-search"
                 value={symbolInput}
                 onChange={(e) => {
+                  clearSearchSuggestions();
+                  setSearchMessage(null);
                   setSymbolInput(e.target.value);
                 }}
                 onFocus={() => {
@@ -837,25 +863,27 @@ export default function Page() {
                 spellCheck={false}
                 role="combobox"
                 aria-autocomplete="list"
-                aria-expanded={showSearchSuggestions && searchSuggestions.length > 0}
-                aria-controls="search-suggestions-listbox"
-                aria-activedescendant={activeSuggestionId}
+                aria-expanded={showSearchSuggestions && !loadingSuggestions && searchSuggestions.length > 0}
+                aria-controls={showSearchSuggestions && !loadingSuggestions && searchSuggestions.length > 0 ? "search-suggestions-listbox" : undefined}
+                aria-activedescendant={showSearchSuggestions && !loadingSuggestions ? activeSuggestionId : undefined}
                 className="w-full rounded-lg border border-stone-300 bg-white px-4 py-2.5 text-sm placeholder:text-stone-500 focus:border-stone-500 focus:outline-none"
                 placeholder="Search any NSE ticker (e.g., BAJFINANCE)"
               />
-              {showSearchSuggestions ? (
-                <div id="search-suggestions-listbox" role="listbox" className="absolute left-0 right-0 z-20 mt-1 overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
-                  {loadingSuggestions ? (
-                    <p className="px-3 py-2 text-xs text-stone-500">Finding matches...</p>
-                  ) : searchSuggestions.length === 0 ? (
-                    <p className="px-3 py-2 text-xs text-stone-500">No matches found.</p>
-                  ) : (
-                    <ul className="max-h-72 overflow-y-auto">
+              <div role="status" aria-live="polite" aria-atomic="true">
+                {showSearchSuggestions && (loadingSuggestions || searchSuggestions.length === 0) ? (
+                  <p className="absolute left-0 right-0 z-20 mt-1 rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-500 shadow-sm">
+                    {loadingSuggestions ? "Finding matches..." : "No matches found."}
+                  </p>
+                ) : null}
+              </div>
+              {showSearchSuggestions && !loadingSuggestions && searchSuggestions.length > 0 ? (
+                <div className="absolute left-0 right-0 z-20 mt-1 overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
+                    <ul id="search-suggestions-listbox" role="listbox" aria-label="Stock suggestions" className="max-h-72 overflow-y-auto">
                       {searchSuggestions.map((suggestion, index) => {
                         const isActive = index === activeSuggestionIndex;
 
                         return (
-                        <li key={`${suggestion.symbol}-${suggestion.sector}`}>
+                        <li key={`${suggestion.symbol}-${suggestion.sector}`} role="presentation">
                           <button
                             id={`search-suggestion-${suggestion.symbol}`}
                             type="button"
@@ -883,7 +911,6 @@ export default function Page() {
                         );
                       })}
                     </ul>
-                  )}
                 </div>
               ) : null}
             </div>
@@ -924,7 +951,9 @@ export default function Page() {
               Go
             </button>
           </form>
-          {searchMessage ? <p className="mt-2 text-xs text-stone-500">{searchMessage}</p> : null}
+          <div role="status" aria-live="polite" aria-atomic="true">
+            {searchMessage ? <p className="mt-2 text-xs text-stone-500">{searchMessage}</p> : null}
+          </div>
         </section>
 
         {/* Hero Summary - The Opinion */}
@@ -969,6 +998,7 @@ export default function Page() {
                   : `${displayName} raises concerns on multiple fronts. The current valuation or business quality may not justify the risk.`
                 }
               </p>
+              <p className="mt-2 text-xs text-stone-500">Algorithmic model output for educational comparison only.</p>
               <p className="mt-3 text-xs text-stone-500">
                 Updated {lastUpdatedLabel} · Based on price, fundamentals, and news sentiment
               </p>
@@ -1053,11 +1083,15 @@ export default function Page() {
           {/* Footer - minimal, trustworthy */}
           <footer className="border-t border-stone-200 pt-8 text-center">
             <p className="text-xs text-stone-500">
-              Data from NSE, Screener.in, and Google News RSS, with trusted fallback research when needed · Cached for reliability
+              Prices from Yahoo Finance, fundamentals from Screener.in, and news from Google News RSS, with fallback research links · Cached for reliability
             </p>
             <p className="mt-2 text-xs font-medium text-stone-500">
               This is not financial advice. Always do your own research.
             </p>
+            <p className="mx-auto mt-3 max-w-2xl text-xs leading-relaxed text-stone-500">
+              Finalysis operates without accounts. Stock searches are processed server-side to fetch market data from public providers. Preferences are stored locally in your browser. We do not run tracking cookies or third-party behavioral analytics.
+            </p>
+            <div className="mt-3"><DisclaimerModal /></div>
           </footer>
         </div>
       </div>

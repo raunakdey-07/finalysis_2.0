@@ -1,80 +1,111 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
+import {
+  Root as Dialog,
+  Content as DialogContent,
+  Title as DialogTitle,
+  Description as DialogDescription,
+  Portal,
+  Overlay,
+  Trigger,
+  Close,
+} from "@radix-ui/react-dialog";
+import { acceptDisclaimer, hasAcceptedDisclaimer } from "@/lib/utils/disclaimer-storage";
 
-const DISCLAIMER_KEY = "finalysis_disclaimer_accepted";
-
-// External store pattern - avoids setState in useEffect
 function subscribe(callback: () => void) {
   window.addEventListener("storage", callback);
   return () => window.removeEventListener("storage", callback);
 }
 
-function getSnapshot() {
-  return localStorage.getItem(DISCLAIMER_KEY);
-}
-
 function getServerSnapshot() {
-  return "pending"; // Assume accepted during SSR to avoid hydration mismatch
+  return true; // Keep the dialog closed until browser storage can be checked.
 }
 
 export default function DisclaimerModal() {
-  const accepted = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
-  
+  const accepted = useSyncExternalStore(subscribe, hasAcceptedDisclaimer, getServerSnapshot);
+  // An explicit dismissal overrides automatic opening without recording acceptance.
+  const [open, setOpen] = useState<boolean | undefined>(undefined);
+
   function handleAccept() {
-    localStorage.setItem(DISCLAIMER_KEY, new Date().toISOString());
-    window.dispatchEvent(new Event("storage")); // Trigger re-render
+    acceptDisclaimer();
+    setOpen(false);
   }
 
-  // Don't render if SSR ("pending") or already accepted
-  if (accepted) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-6 shadow-2xl sm:p-8">
-        <h2 className="text-xl font-semibold text-stone-900">Before you begin</h2>
-        
-        <div className="mt-4 space-y-4 text-sm leading-relaxed text-stone-600">
-          <p>
-            <strong className="text-stone-800">Finalysis is an educational tool</strong> designed to help you understand 
-            stocks better. It is not a substitute for professional financial advice.
-          </p>
-          
-          <div className="rounded-lg bg-amber-50 p-4 text-amber-900">
-            <p className="font-medium">Important Disclaimers:</p>
-            <ul className="mt-2 list-inside list-disc space-y-1 text-amber-800">
-              <li>This is <strong>not financial advice</strong></li>
-              <li>Data may be delayed, incomplete, or inaccurate</li>
-              <li>Always verify information from official sources</li>
-              <li>Consult a SEBI-registered advisor before investing</li>
-            </ul>
+    <Dialog open={open ?? !accepted} onOpenChange={setOpen}>
+      <Trigger asChild>
+        <button
+          type="button"
+          className="rounded text-sm text-stone-600 underline underline-offset-4 hover:text-stone-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 focus-visible:ring-offset-2"
+        >
+          Disclaimers &amp; Methodology
+        </button>
+      </Trigger>
+      <Portal>
+        <Overlay className="fixed inset-0 z-50 bg-black/50" />
+        <DialogContent aria-modal="true" className="fixed left-1/2 top-1/2 z-50 max-h-[90vh] w-[calc(100%_-_2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl bg-white p-6 shadow-2xl sm:p-8">
+          <DialogTitle className="text-xl font-semibold text-stone-900">
+            Before you begin
+          </DialogTitle>
+
+          <div className="mt-4 space-y-4 text-sm leading-relaxed text-stone-600">
+            <DialogDescription>
+              <strong className="text-stone-800">Finalysis is an educational tool</strong> designed to help you understand
+              stocks better. It is not a substitute for professional financial advice.
+            </DialogDescription>
+
+            <div className="rounded-lg bg-amber-50 p-4 text-amber-900">
+              <p className="font-medium">Important Disclaimers:</p>
+              <ul className="mt-2 list-inside list-disc space-y-1 text-amber-800">
+                <li>This is <strong>not financial advice</strong></li>
+                <li>Data may be delayed, incomplete, or inaccurate</li>
+                <li>Always verify information from official sources</li>
+                <li>Consult a SEBI-registered advisor before investing</li>
+              </ul>
+            </div>
+
+            <p>
+              <strong className="text-stone-800">Data sources:</strong> Prices come from the Yahoo Finance public API,
+              not a direct NSE feed. Fundamentals are extracted from Screener.in public pages.
+              Prices may be delayed and fundamentals may be outdated.
+            </p>
+
+            <p>
+              <strong className="text-stone-800">Methodology:</strong> Scores are rule-based, heuristic summaries of
+              available inputs, not probabilities, expected returns, or predictions. Review the underlying metrics,
+              their explanations, and data limitations rather than relying on a score alone.
+            </p>
+
+            <p>
+              <strong className="text-stone-800">No guarantees:</strong> Scores and verdicts are educational summaries,
+              not investment recommendations, and may not reflect actual investment quality. Past performance
+              does not guarantee future results.
+            </p>
+
+            <p className="text-xs text-stone-500">
+              Selecting “I understand, continue” records your acknowledgment of these limitations and educational use.
+              Closing this dialog does not record acceptance.
+            </p>
           </div>
 
-          <p>
-            <strong className="text-stone-800">Data sources:</strong> Prices from NSE public endpoints 
-            (may be 10+ minutes delayed), fundamentals scraped from Screener.in (may be outdated), 
-            news from Google News RSS, with fallback sources from NSE India, Screener.in, BSE India, and Moneycontrol when needed.
-          </p>
-
-          <p>
-            <strong className="text-stone-800">No guarantees:</strong> The scores, verdicts, and recommendations 
-            are algorithmically generated and may not reflect actual investment quality. Past performance 
-            does not guarantee future results.
-          </p>
-
-          <p className="text-xs text-stone-500">
-            By continuing, you acknowledge that you understand these limitations and agree to use 
-            this tool for educational purposes only.
-          </p>
-        </div>
-
-        <button
-          onClick={handleAccept}
-          className="mt-6 w-full rounded-lg bg-stone-900 py-3 text-sm font-medium text-white hover:bg-stone-800"
-        >
-          I understand, continue
-        </button>
-      </div>
-    </div>
+          <button
+            type="button"
+            onClick={handleAccept}
+            className="mt-6 w-full rounded-lg bg-stone-900 py-3 text-sm font-medium text-white hover:bg-stone-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 focus-visible:ring-offset-2"
+          >
+            I understand, continue
+          </button>
+          <Close asChild>
+            <button
+              type="button"
+              className="mt-3 w-full rounded-lg py-2 text-sm font-medium text-stone-600 hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 focus-visible:ring-offset-2"
+            >
+              Close
+            </button>
+          </Close>
+        </DialogContent>
+      </Portal>
+    </Dialog>
   );
 }
