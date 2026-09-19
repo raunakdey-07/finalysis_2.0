@@ -787,7 +787,7 @@ export default function Page() {
           <header className="mb-10 border-b border-stone-200 pb-6">
             <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-stone-500">Finalysis</p>
             <h1 className="mt-2 text-2xl font-semibold tracking-tight text-stone-800 sm:text-3xl">
-              Simple stock research for India
+              Research tool for Indian Stock Market
             </h1>
             <p className="mt-2 text-sm text-stone-500">
               Three questions about any NSE stock: Is it a good business? Is it improving? Is the price fair?
