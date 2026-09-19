@@ -998,7 +998,6 @@ export default function Page() {
                   : `${displayName} raises concerns on multiple fronts. The current valuation or business quality may not justify the risk.`
                 }
               </p>
-              <p className="mt-2 text-xs text-stone-500">Algorithmic model output for educational comparison only.</p>
               <p className="mt-3 text-xs text-stone-500">
                 Updated {lastUpdatedLabel} · Based on price, fundamentals, and news sentiment
               </p>
@@ -1085,13 +1084,11 @@ export default function Page() {
             <p className="text-xs text-stone-500">
               Prices from Yahoo Finance, fundamentals from Screener.in, and news from Google News RSS, with fallback research links · Cached for reliability
             </p>
-            <p className="mt-2 text-xs font-medium text-stone-500">
-              This is not financial advice. Always do your own research.
+            <p className="mt-2 text-xs text-stone-500">This is not financial advice. Always do your own research.
             </p>
             <p className="mx-auto mt-3 max-w-2xl text-xs leading-relaxed text-stone-500">
-              Finalysis operates without accounts. Stock searches are processed server-side to fetch market data from public providers. Preferences are stored locally in your browser. We do not run tracking cookies or third-party behavioral analytics.
+              No accounts or tracking. Searches use public market data; preferences stay in your browser.
             </p>
-            <div className="mt-3"><DisclaimerModal /></div>
           </footer>
         </div>
       </div>

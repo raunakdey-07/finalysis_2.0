@@ -139,7 +139,6 @@ export default function AnalysisCards({
                   <span className="text-base font-medium text-stone-500">/100</span>
                   <ScoreExplanation score={score} metric="businessQuality" />
                 </div>
-                <p className="mt-2 text-xs text-stone-500">Algorithmic model output for educational comparison only.</p>
                 <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-stone-100">
                   <div className={`h-1.5 rounded-full transition-all ${VERDICT[verdict].bg}`} style={{ width: `${score}%` }} />
                 </div>
@@ -219,7 +218,6 @@ export default function AnalysisCards({
                   <span className="text-base font-medium text-stone-500">/100</span>
                   <ScoreExplanation score={score} metric="valuation" />
                 </div>
-                <p className="mt-2 text-xs text-stone-500">Algorithmic model output for educational comparison only.</p>
                 <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-stone-100">
                   <div className={`h-1.5 rounded-full transition-all ${VERDICT[verdict].bg}`} style={{ width: `${score}%` }} />
                 </div>

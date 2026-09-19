@@ -174,6 +174,7 @@ export function ScoreExplanation({ score, metric, label: labelProp, className }:
         <div className="space-y-1.5">
           <p><span className="font-medium text-stone-800">{Math.round(score)} / 100.</span> {definition.interpretation}</p>
           {definition.caveat ? <p>{definition.caveat}</p> : null}
+          <p className="text-stone-400">Algorithmic model output for educational comparison only.</p>
         </div>
       }
     />
