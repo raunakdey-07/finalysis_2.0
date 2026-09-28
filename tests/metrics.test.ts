@@ -1,321 +1,238 @@
-/**
- * Regression tests for the Finalysis metrics/scoring engine.
- * These test the actual implementation, not the specification.
- */
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
+  calculateBusinessQualityScore,
   calculateMetrics,
-  calculateGrowthScore,
-  calculateProfitabilityScore,
   calculateValuationScore,
-  calculateMomentumScore,
-  getRecommendation,
-  SectorProfile,
+  describeVerdict,
+  inferSectorProfile,
+  readMarketSignals,
 } from '@/lib/metrics';
-import { StockFundamentals, StockPrice } from '@/types';
+import type { StockFundamentals, StockPrice } from '@/types';
 
-const defaultFundamentals: StockFundamentals = {
-  symbol: 'TEST',
-  companyName: 'Test Company',
-  marketCap: 1000000000,
-  peRatio: 25,
-  pbRatio: 3,
-  dividendYield: 2,
-  epsLast4Quarters: 2.5,
-  bookValue: 20,
-  faceValue: 10,
-  industry: 'Technology',
-  roe: 15,
-  roce: 12,
-  debtToEquity: 1,
-  revenueGrowth: 10,
-  lastUpdated: new Date(),
-};
+function fundamentals(overrides: Partial<StockFundamentals> = {}): StockFundamentals {
+  return {
+    symbol: 'TEST',
+    companyName: 'Test Company Limited',
+    peRatio: 20,
+    pbRatio: 2,
+    dividendYield: 1.2,
+    eps: 10,
+    bookValue: 100,
+    faceValue: 10,
+    sector: 'Information Technology',
+    industry: 'Computers',
+    roe: 18,
+    roce: 20,
+    periodEnd: '2026-03-31',
+    fetchedAt: '2026-09-28T00:00:00.000Z',
+    ...overrides,
+  };
+}
 
-describe('calculateGrowthScore', () => {
-  it('adds 10 points for positive EPS', () => {
-    const fundamentals = { ...defaultFundamentals, epsLast4Quarters: 2.5 };
-    const result = calculateGrowthScore(fundamentals);
-    expect(result.score).toBeGreaterThan(50);
+describe('inferSectorProfile', () => {
+  it('routes each published sector to the right bands', () => {
+    const cases: [string, string][] = [
+      ['Energy', 'Energy & Utilities'],
+      ['Oil, Gas & Consumable Fuels', 'Energy & Utilities'],
+      ['Financial Services', 'Banking & Financials'],
+      ['Private Sector Bank', 'Banking & Financials'],
+      ['Public Sector Bank', 'Banking & Financials'],
+      ['Information Technology', 'Technology'],
+      ['Fast Moving Consumer Goods', 'Consumer & FMCG'],
+      ['Pharmaceuticals', 'Pharma & Healthcare'],
+      ['Industrials', 'Industrials & Capital Goods'],
+      ['Mining', 'Metals & Mining'],
+    ];
+
+    for (const [sector, expected] of cases) {
+      expect(inferSectorProfile(sector).profile.label, sector).toBe(expected);
+      expect(inferSectorProfile(sector).recognised, sector).toBe(true);
+    }
   });
 
-  it('subtracts 30 points for negative EPS', () => {
-    const fundamentals = { ...defaultFundamentals, epsLast4Quarters: -1.0 };
-    const result = calculateGrowthScore(fundamentals);
-    expect(result.score).toBeLessThan(30);
+  /**
+   * Substring matching sent "Capital Goods" to the technology profile,
+   * because "cap-it-al" contains "it".
+   */
+  it('does not classify capital goods as information technology', () => {
+    expect(inferSectorProfile('Capital Goods').profile.key).toBe('capital');
+    expect(inferSectorProfile('Capital Goods').profile.key).not.toBe('technology');
   });
 
-  it('sets score to 50 when EPS is null', () => {
-    const fundamentals = { ...defaultFundamentals, epsLast4Quarters: null };
-    const result = calculateGrowthScore(fundamentals);
-    expect(result.score).toBeGreaterThanOrEqual(50);
+  it('treats capital markets as financial rather than industrial', () => {
+    expect(inferSectorProfile('Capital Markets').profile.key).toBe('banking');
   });
 
-  it('adds points for positive revenue growth > 15', () => {
-    const fundamentals = { ...defaultFundamentals, revenueGrowth: 20 };
-    const result = calculateGrowthScore(fundamentals);
-    expect(result.score).toBeGreaterThan(65);
-  });
-
-  it('subtracts 12 points for negative revenue growth', () => {
-    const fundamentals = { ...defaultFundamentals, revenueGrowth: -5 };
-    const result = calculateGrowthScore(fundamentals);
-    expect(result.score).toBeLessThan(50);
-  });
-
-  it('keeps score at 50 when revenueGrowth is null', () => {
-    const fundamentals = { ...defaultFundamentals, revenueGrowth: null };
-    const result = calculateGrowthScore(fundamentals);
-    expect(result.score).toBeGreaterThanOrEqual(50);
+  it('falls back to general bands and says so when the sector is unknown', () => {
+    for (const missing of [null, undefined, '', 'Something Unlisted']) {
+      const result = inferSectorProfile(missing);
+      expect(result.profile.key).toBe('general');
+      expect(result.recognised).toBe(false);
+    }
   });
 });
 
-describe('calculateProfitabilityScore', () => {
-  it('adds 18 for strong ROE', () => {
-    const fundamentals = { ...defaultFundamentals, roe: 20 };
-    const profile: SectorProfile = { key: 'technology', label: 'Technology', peLow: 18, peFair: 40, peHigh: 60, pbLow: 3, pbFair: 10, pbHigh: 16, roeStrong: 20, roeHealthy: 14, roeWeak: 9, roceStrong: 18, roceWeak: 10, leverageHigh: 1.2, leverageLow: 0.3 };
-    const result = calculateProfitabilityScore(fundamentals, profile);
-    expect(result.score).toBeGreaterThanOrEqual(68);
+describe('score construction', () => {
+  it('scores from published figures', () => {
+    const metrics = calculateMetrics(fundamentals());
+    expect(metrics.valuation.score).not.toBeNull();
+    expect(metrics.businessQuality.score).not.toBeNull();
+    expect(metrics.overallScore).not.toBeNull();
   });
 
-  it('subtracts 10 for high leverage', () => {
-    const fundamentals = { ...defaultFundamentals, debtToEquity: 10 };
-    const profile: SectorProfile = { key: 'technology', label: 'Technology', peLow: 18, peFair: 40, peHigh: 60, pbLow: 3, pbFair: 10, pbHigh: 16, roeStrong: 20, roeHealthy: 14, roeWeak: 9, roceStrong: 18, roceWeak: 10, leverageHigh: 1.2, leverageLow: 0.3 };
-    const result = calculateProfitabilityScore(fundamentals, profile);
-    expect(result.score).toBeLessThan(50);
-  });
-
-  it('adds 6 for low leverage', () => {
-    const fundamentals = { ...defaultFundamentals, debtToEquity: 0.1 };
-    const profile: SectorProfile = { key: 'technology', label: 'Technology', peLow: 18, peFair: 40, peHigh: 60, pbLow: 3, pbFair: 10, pbHigh: 16, roeStrong: 20, roeHealthy: 14, roeWeak: 9, roceStrong: 18, roceWeak: 10, leverageHigh: 1.2, leverageLow: 0.3 };
-    const result = calculateProfitabilityScore(fundamentals, profile);
-    expect(result.score).toBeGreaterThan(56);
-  });
-
-  it('adds 4 for dividend yield > 2', () => {
-    const fundamentals = { ...defaultFundamentals, dividendYield: 3 };
-    const profile: SectorProfile = { key: 'technology', label: 'Technology', peLow: 18, peFair: 40, peHigh: 60, pbLow: 3, pbFair: 10, pbHigh: 16, roeStrong: 20, roeHealthy: 14, roeWeak: 9, roceStrong: 18, roceWeak: 10, leverageHigh: 1.2, leverageLow: 0.3 };
-    const result = calculateProfitabilityScore(fundamentals, profile);
-    expect(result.score).toBeGreaterThan(54);
-  });
-
-  it('sets score to 50 when all data is missing', () => {
-    const fundamentals = {
-      ...defaultFundamentals,
+  /**
+   * A neutral 50 is the reference a real reading is measured against. It is
+   * not a stand-in for a missing one.
+   */
+  it('produces no score at all when nothing was published', () => {
+    const empty = fundamentals({
+      peRatio: null,
+      pbRatio: null,
       roe: null,
       roce: null,
-      debtToEquity: null,
       dividendYield: null,
-    };
-    const profile: SectorProfile = { key: 'general', label: 'General Indian Market', peLow: 15, peFair: 35, peHigh: 55, pbLow: 2, pbFair: 6, pbHigh: 10, roeStrong: 18, roeHealthy: 12, roeWeak: 8, roceStrong: 15, roceWeak: 10, leverageHigh: 1.5, leverageLow: 0.5 };
-    const result = calculateProfitabilityScore(fundamentals, profile);
-    expect(result.score).toBe(50);
+    });
+
+    const metrics = calculateMetrics(empty);
+    expect(metrics.valuation.score).toBeNull();
+    expect(metrics.valuation.verdict).toBeNull();
+    expect(metrics.businessQuality.score).toBeNull();
+    expect(metrics.overallScore).toBeNull();
+  });
+
+  it('names the figures it could not use instead of hiding them', () => {
+    const partial = fundamentals({ peRatio: null, pbRatio: null, roce: null, dividendYield: null });
+    const quality = calculateBusinessQualityScore(partial, inferSectorProfile('Information Technology').profile);
+
+    expect(quality.score).not.toBeNull();
+    expect(quality.considered).toBe(3);
+    expect(quality.available).toBe(1);
+    expect(quality.coverage).toBeCloseTo(1 / 3, 6);
+    expect(quality.missing).toEqual(['ROCE', 'Dividend yield']);
+  });
+
+  it('still scores a single available input but reports the shortfall', () => {
+    const oneInput = fundamentals({ pbRatio: null, roe: null, roce: null, dividendYield: null });
+    const valuation = calculateValuationScore(oneInput, inferSectorProfile('Information Technology').profile);
+
+    expect(valuation.score).not.toBeNull();
+    expect(valuation.considered).toBe(2);
+    expect(valuation.available).toBe(1);
+    expect(valuation.missing).toEqual(['P/B']);
+  });
+
+  it('does not treat an invalid P/B as a cheap signal', () => {
+    // Unreachable from the parser, which suppresses P/B for negative net worth,
+    // but a negative ratio must never score as a discount if one ever arrives.
+    const withNegative = calculateValuationScore(
+      fundamentals({ pbRatio: -1 }),
+      inferSectorProfile('Information Technology').profile
+    );
+    const without = calculateValuationScore(
+      fundamentals({ pbRatio: null }),
+      inferSectorProfile('Information Technology').profile
+    );
+
+    // Same P/E input, so the only difference is whether P/B contributed a
+    // "cheap" bonus.
+    expect(withNegative.score).toBe(without.score);
+    expect(withNegative.highlights.join(' ')).toMatch(/not meaningful/i);
+  });
+
+  it('keeps a loss-making company out of the cheap end of the valuation score', () => {
+    // A loss-maker publishes no P/E, so the score rests on P/B alone and says so.
+    const loss = calculateValuationScore(
+      fundamentals({ peRatio: null, pbRatio: 0.5 }),
+      inferSectorProfile('Information Technology').profile
+    );
+    expect(loss.available).toBe(1);
+    expect(loss.missing).toEqual(['P/E']);
+    expect(loss.highlights.join(' ')).not.toMatch(/value-friendly/);
   });
 });
 
-describe('calculateValuationScore', () => {
-  it('adds 15 for low P/E', () => {
-    const fundamentals = { ...defaultFundamentals, peRatio: 8 };
-    const profile: SectorProfile = { key: 'technology', label: 'Technology', peLow: 18, peFair: 40, peHigh: 60, pbLow: 3, pbFair: 10, pbHigh: 16, roeStrong: 20, roeHealthy: 14, roeWeak: 9, roceStrong: 18, roceWeak: 10, leverageHigh: 1.2, leverageLow: 0.3 };
-    const result = calculateValuationScore(fundamentals, profile);
-    expect(result.score).toBeGreaterThanOrEqual(65);
-  });
-
-  it('subtracts 8 for elevated P/E', () => {
-    const fundamentals = { ...defaultFundamentals, peRatio: 50 };
-    const profile: SectorProfile = { key: 'technology', label: 'Technology', peLow: 18, peFair: 40, peHigh: 60, pbLow: 3, pbFair: 10, pbHigh: 16, roeStrong: 20, roeHealthy: 14, roeWeak: 9, roceStrong: 18, roceWeak: 10, leverageHigh: 1.2, leverageLow: 0.3 };
-    const result = calculateValuationScore(fundamentals, profile);
-    expect(result.score).toBeLessThanOrEqual(42);
-  });
-
-  it('sets score to 50 when P/E is null', () => {
-    const fundamentals = { ...defaultFundamentals, peRatio: null };
-    const profile: SectorProfile = { key: 'technology', label: 'Technology', peLow: 18, peFair: 40, peHigh: 60, pbLow: 3, pbFair: 10, pbHigh: 16, roeStrong: 20, roeHealthy: 14, roeWeak: 9, roceStrong: 18, roceWeak: 10, leverageHigh: 1.2, leverageLow: 0.3 };
-    const result = calculateValuationScore(fundamentals, profile);
-    expect(result.score).toBe(50);
+describe('overall score', () => {
+  it('averages only the sub-scores that exist', () => {
+    const onlyValuation = calculateMetrics(
+      fundamentals({ roe: null, roce: null, dividendYield: null })
+    );
+    expect(onlyValuation.businessQuality.score).toBeNull();
+    expect(onlyValuation.overallScore).toBe(onlyValuation.valuation.score);
+    expect(onlyValuation.overallCoverage).toBeCloseTo(2 / 5, 6);
   });
 });
 
-describe('calculateMomentumScore', () => {
-  it('adds 25 for strong positive daily change', () => {
-    const price: StockPrice = {
-      symbol: 'TEST',
-      price: 100,
-      change: 5,
-      changePercent: 5,
-      daily_change_percent: 5,
-      volume: 2000000,
-      open: 98,
-      high: 102,
-      low: 97,
-      previousClose: 95,
-      fiftyTwoWeekHigh: 120,
-      fiftyTwoWeekLow: 80,
-      timestamp: new Date(),
-    };
-    const result = calculateMomentumScore(price);
-    expect(result.score).toBeGreaterThanOrEqual(70);
+describe('describeVerdict', () => {
+  it('says plainly when there is nothing to screen', () => {
+    const metrics = calculateMetrics(
+      fundamentals({ peRatio: null, pbRatio: null, roe: null, roce: null, dividendYield: null })
+    );
+    const verdict = describeVerdict(metrics);
+
+    expect(verdict.label).toBe('insufficient-data');
+    expect(verdict.summary).toMatch(/not a judgement about the company/i);
   });
 
-  it('subtracts 25 for strong negative daily change', () => {
-    const price: StockPrice = {
-      symbol: 'TEST',
-      price: 100,
-      change: -5,
-      changePercent: -5,
-      daily_change_percent: -5,
-      volume: 2000000,
-      open: 102,
-      high: 105,
-      low: 98,
-      previousClose: 105,
-      fiftyTwoWeekHigh: 120,
-      fiftyTwoWeekLow: 80,
-      timestamp: new Date(),
-    };
-    const result = calculateMomentumScore(price);
-    expect(result.score).toBeLessThan(55);
+  it('describes the reading without calling it a price, a setup, or a recommendation', () => {
+    const verdict = describeVerdict(calculateMetrics(fundamentals()));
+    const wording = `${verdict.headline} ${verdict.summary}`.toLowerCase();
+
+    expect(verdict.label).not.toBe('insufficient-data');
+    expect(verdict.headline).toBe('Screening reads favourably');
+    expect(verdict.summary.length).toBeGreaterThan(0);
+    for (const forbidden of ['favourable setup', 'fair price', 'buy ', 'sell ', 'recommend', 'target price']) {
+      expect(wording, forbidden).not.toContain(forbidden);
+    }
   });
 
-  it('sets score to 50 when price is null', () => {
-    const result = calculateMomentumScore(null);
-    expect(result.score).toBe(50);
+  it('names the bands it used and the figures behind the score', () => {
+    const verdict = describeVerdict(calculateMetrics(fundamentals({ sector: 'Energy' })));
+    expect(verdict.basis).toContain('Energy & Utilities');
+    expect(verdict.basis).toMatch(/valuation \d+\/100/);
   });
 
-  it('adds 10 for positive but small daily change', () => {
-    const price: StockPrice = {
-      symbol: 'TEST',
-      price: 100,
-      change: 1,
-      changePercent: 1,
-      daily_change_percent: 1,
-      volume: 500000,
-      open: 99,
-      high: 101,
-      low: 98,
-      previousClose: 99,
-      fiftyTwoWeekHigh: 120,
-      fiftyTwoWeekLow: 80,
-      timestamp: new Date(),
-    };
-    const result = calculateMomentumScore(price);
-    expect(result.score).toBeGreaterThan(59);
-  });
-
-  it('subtracts 10 for small negative daily change', () => {
-    const price: StockPrice = {
-      symbol: 'TEST',
-      price: 100,
-      change: -1,
-      changePercent: -1,
-      daily_change_percent: -1,
-      volume: 500000,
-      open: 101,
-      high: 103,
-      low: 99,
-      previousClose: 101,
-      fiftyTwoWeekHigh: 120,
-      fiftyTwoWeekLow: 80,
-      timestamp: new Date(),
-    };
-    const result = calculateMomentumScore(price);
-    expect(result.score).toBeLessThan(41);
+  it('flags a reading built from a thin set of figures', () => {
+    const verdict = describeVerdict(
+      calculateMetrics(fundamentals({ pbRatio: null, roe: null, roce: null, dividendYield: null }))
+    );
+    expect(verdict.summary).toMatch(/provisional/i);
   });
 });
 
-describe('getRecommendation', () => {
-  it('returns High Score for score >= 75', () => {
-    expect(getRecommendation(75)).toBe('High Score');
-    expect(getRecommendation(80)).toBe('High Score');
-    expect(getRecommendation(100)).toBe('High Score');
+describe('readMarketSignals', () => {
+  const price = (overrides: Partial<StockPrice>): StockPrice => ({
+    symbol: 'TEST',
+    price: 100,
+    change: 1,
+    changePercent: 1,
+    volume: 1000,
+    previousClose: 99,
+    dayOpen: 99,
+    dayHigh: 101,
+    dayLow: 98,
+    fiftyTwoWeekHigh: 120,
+    fiftyTwoWeekLow: 80,
+    quotedAt: '2026-09-28T10:00:00.000Z',
+    fetchedAt: '2026-09-28T10:00:05.000Z',
+    exchangeTimezone: 'Asia/Kolkata',
+    freshness: { kind: 'live', ageMs: 5000 },
+    ...overrides,
   });
 
-  it('returns Moderate-High Score for score >= 60 and < 75', () => {
-    expect(getRecommendation(60)).toBe('Moderate-High Score');
-    expect(getRecommendation(64)).toBe('Moderate-High Score');
-    expect(getRecommendation(74)).toBe('Moderate-High Score');
+  it('reports the direction of the session', () => {
+    expect(readMarketSignals(price({ changePercent: 2.5 })).dailyChangePercent).toBe(2.5);
   });
 
-  it('returns Neutral Score for score >= 45 and < 60', () => {
-    expect(getRecommendation(45)).toBe('Neutral Score');
-    expect(getRecommendation(50)).toBe('Neutral Score');
-    expect(getRecommendation(59)).toBe('Neutral Score');
+  it('reports no signal when there is no price at all', () => {
+    const signals = readMarketSignals(null);
+    expect(signals.hasPrice).toBe(false);
+    expect(signals.dailyChangePercent).toBeNull();
+    expect(signals.note).toMatch(/no price/i);
   });
 
-  it('returns Moderate-Low Score for score >= 30 and < 45', () => {
-    expect(getRecommendation(30)).toBe('Moderate-Low Score');
-    expect(getRecommendation(35)).toBe('Moderate-Low Score');
-    expect(getRecommendation(44)).toBe('Moderate-Low Score');
-  });
-
-  it('returns Low Score for score < 30', () => {
-    expect(getRecommendation(29)).toBe('Low Score');
-    expect(getRecommendation(0)).toBe('Low Score');
-    expect(getRecommendation(-1)).toBe('Low Score');
-  });
-});
-
-describe('calculateMetrics end-to-end', () => {
-  it('produces valid scores with all data available', () => {
-    const price: StockPrice = {
-      symbol: 'TEST',
-      price: 100,
-      change: 2,
-      changePercent: 2,
-      daily_change_percent: 2,
-      volume: 1500000,
-      open: 98,
-      high: 101,
-      low: 97,
-      previousClose: 96,
-      fiftyTwoWeekHigh: 120,
-      fiftyTwoWeekLow: 80,
-      timestamp: new Date(),
-    };
-    const fundamentals = { ...defaultFundamentals, peRatio: 25, pbRatio: 3 };
-    const result = calculateMetrics(fundamentals, price);
-
-    expect(result).toHaveProperty('valuationScore');
-    expect(result).toHaveProperty('growthScore');
-    expect(result).toHaveProperty('profitabilityScore');
-    expect(result).toHaveProperty('momentumScore');
-    expect(result).toHaveProperty('overallScore');
-    expect(result).toHaveProperty('explanation');
-    expect(typeof result.overallScore).toBe('number');
-    expect(result.overallScore).toBeGreaterThanOrEqual(0);
-    expect(result.overallScore).toBeLessThanOrEqual(100);
-  });
-
-  it('handles missing price gracefully', () => {
-    const fundamentals = { ...defaultFundamentals, peRatio: 25 };
-    const result = calculateMetrics(fundamentals, null);
-
-    expect(result).toBeDefined();
-    expect(result.momentumScore).toBe(50); // neutral when no price data
-    expect(result.explanation.momentum).toBeDefined();
-  });
-
-  it('handles missing peRatio gracefully', () => {
-    const price: StockPrice = {
-      symbol: 'TEST',
-      price: 100,
-      change: 2,
-      changePercent: 2,
-      daily_change_percent: 2,
-      volume: 1500000,
-      open: 98,
-      high: 101,
-      low: 97,
-      previousClose: 96,
-      fiftyTwoWeekHigh: 120,
-      fiftyTwoWeekLow: 80,
-      timestamp: new Date(),
-    };
-    const fundamentals = { ...defaultFundamentals, peRatio: null };
-    const result = calculateMetrics(fundamentals, price);
-
-    expect(result).toBeDefined();
-    expect(result.valuationScore).toBe(50); // neutral when no P/E
-    expect(result.explanation.valuation).toBeDefined();
+  it('does not call an unreported change flat', () => {
+    const signals = readMarketSignals(price({ changePercent: null }));
+    expect(signals.dailyChangePercent).toBeNull();
+    expect(signals.note).toMatch(/did not report a session change/i);
   });
 });

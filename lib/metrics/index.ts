@@ -1,12 +1,30 @@
 /**
- * Explainable metrics calculation
- * Provides transparent stock analysis metrics with explanations
+ * Explainable screening metrics.
+ *
+ * Two rules govern everything here:
+ *
+ * 1. An input the provider did not disclose is null. It is never rounded to a
+ *    neutral contribution, because a neutral contribution is indistinguishable
+ *    from a real, unremarkable reading once it reaches the page.
+ * 2. A score is only produced when there is at least one real input. The share
+ *    of inputs that were actually available travels with the score so the UI
+ *    can say how much weight is behind it.
  */
 
-import { StockFundamentals, StockMetrics, StockPrice } from '@/types';
+import { StockFundamentals, StockPrice } from '@/types';
 
-export type SectorProfile = {
-  key: 'banking' | 'technology' | 'consumer' | 'pharma' | 'capital' | 'energy' | 'metals' | 'general';
+export type SectorProfileKey =
+  | 'banking'
+  | 'technology'
+  | 'consumer'
+  | 'pharma'
+  | 'capital'
+  | 'energy'
+  | 'metals'
+  | 'general';
+
+export interface SectorProfile {
+  key: SectorProfileKey;
   label: string;
   peLow: number;
   peFair: number;
@@ -19,420 +37,460 @@ export type SectorProfile = {
   roeWeak: number;
   roceStrong: number;
   roceWeak: number;
-  leverageHigh: number;
-  leverageLow: number;
-};
+}
 
-const SECTOR_PROFILES: Record<SectorProfile['key'], SectorProfile> = {
+const SECTOR_PROFILES: Record<SectorProfileKey, SectorProfile> = {
   banking: {
-    key: 'banking',
-    label: 'Banking & Financials',
-    peLow: 10,
-    peFair: 24,
-    peHigh: 35,
-    pbLow: 1,
-    pbFair: 3,
-    pbHigh: 5,
-    roeStrong: 15,
-    roeHealthy: 11,
-    roeWeak: 8,
-    roceStrong: 12,
-    roceWeak: 8,
-    leverageHigh: 8,
-    leverageLow: 2,
+    key: 'banking', label: 'Banking & Financials',
+    peLow: 10, peFair: 24, peHigh: 35,
+    pbLow: 1, pbFair: 3, pbHigh: 5,
+    roeStrong: 15, roeHealthy: 11, roeWeak: 8,
+    roceStrong: 12, roceWeak: 8,
   },
   technology: {
-    key: 'technology',
-    label: 'Technology',
-    peLow: 18,
-    peFair: 40,
-    peHigh: 60,
-    pbLow: 3,
-    pbFair: 10,
-    pbHigh: 16,
-    roeStrong: 20,
-    roeHealthy: 14,
-    roeWeak: 9,
-    roceStrong: 18,
-    roceWeak: 10,
-    leverageHigh: 1.2,
-    leverageLow: 0.3,
+    key: 'technology', label: 'Technology',
+    peLow: 18, peFair: 40, peHigh: 60,
+    pbLow: 3, pbFair: 10, pbHigh: 16,
+    roeStrong: 20, roeHealthy: 14, roeWeak: 9,
+    roceStrong: 18, roceWeak: 10,
   },
   consumer: {
-    key: 'consumer',
-    label: 'Consumer/FMCG',
-    peLow: 20,
-    peFair: 45,
-    peHigh: 65,
-    pbLow: 4,
-    pbFair: 12,
-    pbHigh: 18,
-    roeStrong: 22,
-    roeHealthy: 15,
-    roeWeak: 10,
-    roceStrong: 20,
-    roceWeak: 12,
-    leverageHigh: 1.5,
-    leverageLow: 0.4,
+    key: 'consumer', label: 'Consumer & FMCG',
+    peLow: 20, peFair: 45, peHigh: 65,
+    pbLow: 4, pbFair: 12, pbHigh: 18,
+    roeStrong: 22, roeHealthy: 15, roeWeak: 10,
+    roceStrong: 20, roceWeak: 12,
   },
   pharma: {
-    key: 'pharma',
-    label: 'Pharma/Healthcare',
-    peLow: 16,
-    peFair: 34,
-    peHigh: 50,
-    pbLow: 2,
-    pbFair: 7,
-    pbHigh: 12,
-    roeStrong: 18,
-    roeHealthy: 12,
-    roeWeak: 8,
-    roceStrong: 16,
-    roceWeak: 10,
-    leverageHigh: 1.8,
-    leverageLow: 0.5,
+    key: 'pharma', label: 'Pharma & Healthcare',
+    peLow: 16, peFair: 34, peHigh: 50,
+    pbLow: 2, pbFair: 7, pbHigh: 12,
+    roeStrong: 18, roeHealthy: 12, roeWeak: 8,
+    roceStrong: 16, roceWeak: 10,
   },
   capital: {
-    key: 'capital',
-    label: 'Capital Goods/Industrial',
-    peLow: 14,
-    peFair: 30,
-    peHigh: 45,
-    pbLow: 1.5,
-    pbFair: 5,
-    pbHigh: 9,
-    roeStrong: 17,
-    roeHealthy: 11,
-    roeWeak: 7,
-    roceStrong: 15,
-    roceWeak: 9,
-    leverageHigh: 2,
-    leverageLow: 0.5,
+    key: 'capital', label: 'Industrials & Capital Goods',
+    peLow: 14, peFair: 30, peHigh: 45,
+    pbLow: 1.5, pbFair: 5, pbHigh: 9,
+    roeStrong: 17, roeHealthy: 11, roeWeak: 7,
+    roceStrong: 15, roceWeak: 9,
   },
   energy: {
-    key: 'energy',
-    label: 'Energy/Utilities',
-    peLow: 10,
-    peFair: 22,
-    peHigh: 32,
-    pbLow: 1,
-    pbFair: 3.5,
-    pbHigh: 6,
-    roeStrong: 16,
-    roeHealthy: 10,
-    roeWeak: 7,
-    roceStrong: 13,
-    roceWeak: 8,
-    leverageHigh: 2.5,
-    leverageLow: 0.6,
+    key: 'energy', label: 'Energy & Utilities',
+    peLow: 10, peFair: 22, peHigh: 32,
+    pbLow: 1, pbFair: 3.5, pbHigh: 6,
+    roeStrong: 16, roeHealthy: 10, roeWeak: 7,
+    roceStrong: 13, roceWeak: 8,
   },
   metals: {
-    key: 'metals',
-    label: 'Metals/Materials',
-    peLow: 8,
-    peFair: 18,
-    peHigh: 28,
-    pbLow: 0.9,
-    pbFair: 2.5,
-    pbHigh: 4,
-    roeStrong: 15,
-    roeHealthy: 10,
-    roeWeak: 6,
-    roceStrong: 14,
-    roceWeak: 8,
-    leverageHigh: 2.2,
-    leverageLow: 0.5,
+    key: 'metals', label: 'Metals & Mining',
+    peLow: 8, peFair: 18, peHigh: 28,
+    pbLow: 0.9, pbFair: 2.5, pbHigh: 4,
+    roeStrong: 15, roeHealthy: 10, roeWeak: 6,
+    roceStrong: 14, roceWeak: 8,
   },
   general: {
-    key: 'general',
-    label: 'General Indian Market',
-    peLow: 15,
-    peFair: 35,
-    peHigh: 55,
-    pbLow: 2,
-    pbFair: 6,
-    pbHigh: 10,
-    roeStrong: 18,
-    roeHealthy: 12,
-    roeWeak: 8,
-    roceStrong: 15,
-    roceWeak: 10,
-    leverageHigh: 1.5,
-    leverageLow: 0.5,
+    key: 'general', label: 'the general market',
+    peLow: 15, peFair: 35, peHigh: 55,
+    pbLow: 2, pbFair: 6, pbHigh: 10,
+    roeStrong: 18, roeHealthy: 12, roeWeak: 8,
+    roceStrong: 15, roceWeak: 10,
   },
 };
 
-function inferSectorProfile(industry: string): SectorProfile {
-  const text = industry.toLowerCase();
+type KeywordRule = SectorProfileKey;
 
-  if (text.includes('bank') || text.includes('finance') || text.includes('insurance') || text.includes('nbfc')) {
-    return SECTOR_PROFILES.banking;
-  }
-  if (text.includes('software') || text.includes('it') || text.includes('technology') || text.includes('internet')) {
-    return SECTOR_PROFILES.technology;
-  }
-  if (text.includes('fmcg') || text.includes('consumer') || text.includes('retail') || text.includes('food')) {
-    return SECTOR_PROFILES.consumer;
-  }
-  if (text.includes('pharma') || text.includes('health') || text.includes('hospital') || text.includes('biotech')) {
-    return SECTOR_PROFILES.pharma;
-  }
-  if (text.includes('industrial') || text.includes('capital goods') || text.includes('engineering') || text.includes('construction')) {
-    return SECTOR_PROFILES.capital;
-  }
-  if (text.includes('power') || text.includes('energy') || text.includes('oil') || text.includes('gas') || text.includes('utility')) {
-    return SECTOR_PROFILES.energy;
-  }
-  if (text.includes('metal') || text.includes('steel') || text.includes('mining') || text.includes('cement') || text.includes('material')) {
-    return SECTOR_PROFILES.metals;
-  }
+/**
+ * Keywords per sector. Short keywords are matched against a whole word so that
+ * "Capital Goods" is not classified as "IT" by the letters inside "capital",
+ * and longer ones match inside a word so "pharmaceuticals" still hits "pharma".
+ */
+const SECTOR_KEYWORDS: Record<KeywordRule, string[]> = {
+  banking: ['bank', 'banking', 'financial', 'finance', 'insurance', 'nbfc', 'stockbroking', 'broking'],
+  technology: ['technology', 'software', 'internet', 'computer', 'telecom', 'it'],
+  consumer: ['consumer', 'fmcg', 'retail', 'food', 'hotel', 'beverage', 'tobacco', 'personal care'],
+  pharma: ['pharma', 'healthcare', 'hospital', 'biotech', 'therapeutic', 'laborator'],
+  capital: [
+    'capital', 'capital goods', 'industrial', 'engineering', 'construction',
+    'infrastructure', 'machinery', 'defence', 'auto', 'transport', 'cement', 'electrical',
+  ],
+  energy: ['energy', 'power', 'oil', 'gas', 'fuel', 'utility', 'utilities', 'refinery', 'electricity'],
+  metals: ['metal', 'steel', 'mining', 'cement', 'aluminium', 'zinc', 'copper', 'alloy'],
+  general: [],
+};
 
-  return SECTOR_PROFILES.general;
+const SHORT_KEYWORD_LIMIT = 4;
+
+function tokenize(value: string): string[] {
+  return value
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+}
+
+function keywordMatches(tokens: string[], joined: string, keyword: string): boolean {
+  if (keyword.includes(' ')) return joined.includes(keyword);
+  if (keyword.length <= SHORT_KEYWORD_LIMIT) {
+    return tokens.includes(keyword);
+  }
+  return tokens.some((token) => token.includes(keyword));
 }
 
 /**
- * Calculate valuation score based on P/E and P/B ratios
+ * Choose valuation bands from the company's sector.
+ *
+ * The sector is the broad classification the provider publishes
+ * ("Energy", "Financial Services"), not the narrow industry. When it is
+ * missing we fall back to general-market bands and say so, because silently
+ * scoring a bank on software multiples is the error this avoids.
  */
-export function calculateValuationScore(fundamentals: StockFundamentals, profile: SectorProfile): { score: number; explanation: string } {
-  let score = 50; // Start with neutral score
-  const factors: string[] = [`Using ${profile.label} valuation bands`];
+export function inferSectorProfile(sector: string | null | undefined): {
+  profile: SectorProfile;
+  recognised: boolean;
+} {
+  const tokens = tokenize(sector ?? '');
+  const joined = tokens.join(' ');
 
-  if (fundamentals.peRatio !== null) {
-    if (fundamentals.peRatio < profile.peLow) {
-      score += 15;
-      factors.push('P/E is low versus sector baseline (value-friendly)');
-    } else if (fundamentals.peRatio <= profile.peFair) {
-      score += 5;
-      factors.push('P/E is within expected sector range');
-    } else if (fundamentals.peRatio <= profile.peHigh) {
-      score -= 8;
-      factors.push('P/E is elevated for this sector and needs sustained growth to justify');
-    } else {
-      score -= 18;
-      factors.push('P/E is very high for this sector and implies optimistic expectations');
+  if (tokens.length > 0) {
+    // A capital-markets business is a financial one, so it is checked first.
+    if (tokens.includes('capital') && tokens.includes('markets')) {
+      return { profile: SECTOR_PROFILES.banking, recognised: true };
     }
-  } else {
-    factors.push('P/E data is unavailable');
+
+    for (const [rule, keywords] of Object.entries(SECTOR_KEYWORDS)) {
+      if (keywords.length === 0) continue;
+      if (keywords.some((keyword) => keywordMatches(tokens, joined, keyword))) {
+        return { profile: SECTOR_PROFILES[rule as SectorProfileKey], recognised: true };
+      }
+    }
   }
 
-  if (fundamentals.pbRatio !== null) {
-    if (fundamentals.pbRatio < profile.pbLow) {
-      score += 10;
-      factors.push('P/B is conservative versus sector asset-value norms');
-    } else if (fundamentals.pbRatio <= profile.pbFair) {
-      factors.push('P/B is in a normal-to-premium range');
-    } else if (fundamentals.pbRatio <= profile.pbHigh) {
-      score -= 8;
-      factors.push('P/B is high and can increase downside risk if growth slows');
-    } else {
-      score -= 15;
-      factors.push('P/B is very high for this sector and reflects expensive pricing');
-    }
-  } else {
-    factors.push('P/B data is unavailable');
-  }
+  return { profile: SECTOR_PROFILES.general, recognised: false };
+}
 
-  const explanation = factors.join('. ') + '.';
-  return { score: Math.max(0, Math.min(100, score)), explanation };
+export type ScoreVerdict = 'favourable' | 'mixed' | 'cautious';
+
+export interface MetricScore {
+  /**
+   * The screening score on a 0-100 scale, or null when the provider gave us
+   * nothing to score. A null score is never replaced by a default.
+   */
+  score: number | null;
+  verdict: ScoreVerdict | null;
+  /** 0 to 1: share of the inputs that were actually available. */
+  coverage: number;
+  available: number;
+  considered: number;
+  /** One line per input that had a real value. */
+  highlights: string[];
+  /** One line per input the provider did not disclose. */
+  missing: string[];
+}
+
+interface Reading {
+  delta: number;
+  note: string;
+}
+
+interface InputSpec {
+  label: string;
+  value: number | null;
+  read: (value: number) => Reading;
+}
+
+const BASE_SCORE = 50;
+
+function clamp(value: number): number {
+  return Math.max(0, Math.min(100, value));
+}
+
+function verdictFor(score: number): ScoreVerdict {
+  if (score >= 60) return 'favourable';
+  if (score >= 40) return 'mixed';
+  return 'cautious';
 }
 
 /**
- * Calculate growth score based on EPS and historical performance
+ * Combine available readings into a score.
+ *
+ * The neutral base is the reference point a real reading is measured against,
+ * not a stand-in for a missing one. With nothing available there is nothing to
+ * measure, so the score is null.
  */
-export function calculateGrowthScore(fundamentals: StockFundamentals): { score: number; explanation: string } {
-  let score = 50;
-  const factors: string[] = [];
+function combine(specs: InputSpec[]): MetricScore {
+  const highlights: string[] = [];
+  const missing: string[] = [];
+  let total = BASE_SCORE;
+  let available = 0;
 
-  if (fundamentals.epsLast4Quarters !== null) {
-    if (fundamentals.epsLast4Quarters > 0) {
-      score += 10;
-      factors.push('Company is currently profitable on a trailing EPS basis');
-    } else if (fundamentals.epsLast4Quarters < 0) {
-      score -= 30;
-      factors.push('Negative EPS indicates losses and execution risk');
-    } else {
-      factors.push('EPS is close to break-even');
+  for (const spec of specs) {
+    if (spec.value === null || !Number.isFinite(spec.value)) {
+      missing.push(spec.label);
+      continue;
     }
-  } else {
-    factors.push('EPS data is unavailable');
+    available += 1;
+    const reading = spec.read(spec.value);
+    total += reading.delta;
+    highlights.push(reading.note);
   }
 
-  if (fundamentals.revenueGrowth !== null && fundamentals.revenueGrowth !== undefined) {
-    if (fundamentals.revenueGrowth > 15) {
-      score += 15;
-      factors.push('Revenue growth is strong');
-    } else if (fundamentals.revenueGrowth > 5) {
-      score += 8;
-      factors.push('Revenue growth is healthy');
-    } else if (fundamentals.revenueGrowth < 0) {
-      score -= 12;
-      factors.push('Revenue has contracted');
-    } else {
-      factors.push('Revenue growth is modest');
-    }
-  } else {
-    factors.push('Revenue growth history is unavailable');
-  }
+  const coverage = specs.length === 0 ? 0 : available / specs.length;
 
-  const explanation = factors.join('. ') + '.';
-  return { score: Math.max(0, Math.min(100, score)), explanation };
+  return {
+    score: available === 0 ? null : clamp(Math.round(total)),
+    verdict: available === 0 ? null : verdictFor(clamp(total)),
+    coverage,
+    available,
+    considered: specs.length,
+    highlights,
+    missing,
+  };
 }
 
-/**
- * Calculate profitability score
- */
-export function calculateProfitabilityScore(fundamentals: StockFundamentals, profile: SectorProfile): { score: number; explanation: string } {
-  let score = 50;
-  const factors: string[] = [`Using ${profile.label} quality bands`];
-
-  if (fundamentals.roe !== null && fundamentals.roe !== undefined) {
-    if (fundamentals.roe >= profile.roeStrong) {
-      score += 18;
-      factors.push('ROE is strong');
-    } else if (fundamentals.roe >= profile.roeHealthy) {
-      score += 8;
-      factors.push('ROE is healthy');
-    } else if (fundamentals.roe < profile.roeWeak) {
-      score -= 12;
-      factors.push('ROE is weak');
-    } else {
-      factors.push('ROE is moderate');
-    }
-  } else {
-    factors.push('ROE data is unavailable');
-  }
-
-  if (fundamentals.roce !== null && fundamentals.roce !== undefined) {
-    if (fundamentals.roce >= profile.roceStrong) {
-      score += 10;
-      factors.push('ROCE supports efficient capital use');
-    } else if (fundamentals.roce < profile.roceWeak) {
-      score -= 8;
-      factors.push('ROCE suggests weaker capital efficiency');
-    }
-  } else {
-    factors.push('ROCE data is unavailable');
-  }
-
-  if (fundamentals.debtToEquity !== null && fundamentals.debtToEquity !== undefined) {
-    if (fundamentals.debtToEquity > profile.leverageHigh) {
-      score -= 10;
-      factors.push(`Leverage is high for ${profile.label.toLowerCase()} peers`);
-    } else if (fundamentals.debtToEquity < profile.leverageLow) {
-      score += 6;
-      factors.push('Balance sheet leverage is conservative');
-    }
-  } else {
-    factors.push('Debt-to-equity data is unavailable');
-  }
-
-  if (fundamentals.dividendYield !== null) {
-    if (fundamentals.dividendYield > 2) {
-      score += 4;
-      factors.push('Dividend yield provides an additional cash-return signal');
-    } else {
-      factors.push('Low dividend yield is not penalized for growth-oriented businesses');
-    }
-  } else {
-    factors.push('Dividend data is unavailable');
-  }
-
-  const explanation = factors.join('. ') + '.';
-  return { score: Math.max(0, Math.min(100, score)), explanation };
+export function calculateValuationScore(
+  fundamentals: StockFundamentals,
+  profile: SectorProfile
+): MetricScore {
+  return combine([
+    {
+      label: 'P/E',
+      value: fundamentals.peRatio,
+      read: (value) => {
+        if (value <= 0) {
+          return { delta: 0, note: 'P/E is not meaningful for a loss-making company' };
+        }
+        if (value < profile.peLow) {
+          return { delta: 15, note: `P/E is ${value.toFixed(2)}, below the ${profile.label} band of ${profile.peLow}, which is usually value-friendly` };
+        }
+        if (value <= profile.peFair) {
+          return { delta: 5, note: `P/E is ${value.toFixed(2)}, within the ${profile.label} range` };
+        }
+        if (value <= profile.peHigh) {
+          return { delta: -8, note: `P/E is ${value.toFixed(2)}, above the ${profile.label} fair band, and needs growth to justify` };
+        }
+        return { delta: -18, note: `P/E is ${value.toFixed(2)}, well above the ${profile.label} band of ${profile.peHigh}` };
+      },
+    },
+    {
+      label: 'P/B',
+      value: fundamentals.pbRatio,
+      read: (value) => {
+        if (value <= 0) {
+          return { delta: 0, note: 'P/B is not meaningful on negative net worth' };
+        }
+        if (value < profile.pbLow) {
+          return { delta: 10, note: `P/B is ${value.toFixed(2)}, below the ${profile.label} band of ${profile.pbLow}` };
+        }
+        if (value <= profile.pbFair) {
+          return { delta: 0, note: `P/B is ${value.toFixed(2)}, a normal-to-premium level for ${profile.label}` };
+        }
+        if (value <= profile.pbHigh) {
+          return { delta: -8, note: `P/B is ${value.toFixed(2)}, above the ${profile.label} fair band` };
+        }
+        return { delta: -15, note: `P/B is ${value.toFixed(2)}, well above the ${profile.label} band of ${profile.pbHigh}` };
+      },
+    },
+  ]);
 }
 
-/**
- * Calculate momentum score based on price performance
- */
-export function calculateMomentumScore(price?: StockPrice | null): { score: number; explanation: string } {
+export function calculateBusinessQualityScore(
+  fundamentals: StockFundamentals,
+  profile: SectorProfile
+): MetricScore {
+  return combine([
+    {
+      label: 'ROE',
+      value: fundamentals.roe,
+      read: (value) => {
+        if (value >= profile.roeStrong) {
+          return { delta: 18, note: `ROE is ${value.toFixed(1)}%, strong against the ${profile.label} band` };
+        }
+        if (value >= profile.roeHealthy) {
+          return { delta: 8, note: `ROE is ${value.toFixed(1)}%, healthy against the ${profile.label} band` };
+        }
+        if (value < profile.roeWeak) {
+          return { delta: -12, note: `ROE is ${value.toFixed(1)}%, weak against the ${profile.label} band` };
+        }
+        return { delta: 0, note: `ROE is ${value.toFixed(1)}%, moderate against the ${profile.label} band` };
+      },
+    },
+    {
+      label: 'ROCE',
+      value: fundamentals.roce,
+      read: (value) => {
+        if (value >= profile.roceStrong) {
+          return { delta: 10, note: `ROCE is ${value.toFixed(1)}%, indicating efficient use of capital` };
+        }
+        if (value < profile.roceWeak) {
+          return { delta: -8, note: `ROCE is ${value.toFixed(1)}%, indicating weaker capital efficiency` };
+        }
+        return { delta: 0, note: `ROCE is ${value.toFixed(1)}%` };
+      },
+    },
+    {
+      label: 'Dividend yield',
+      value: fundamentals.dividendYield,
+      read: (value) => ({
+        delta: value > 2 ? 4 : 0,
+        note:
+          value > 2
+            ? `Dividend yield is ${value.toFixed(2)}%, an added income component`
+            : `Dividend yield is ${value.toFixed(2)}%`,
+      }),
+    },
+  ]);
+}
+
+/** Raw market signals. Not a score: these are readings, not a judgement. */
+export interface MarketSignals {
+  dailyChangePercent: number | null;
+  hasPrice: boolean;
+  note: string;
+}
+
+export function readMarketSignals(price: StockPrice | null): MarketSignals {
   if (!price) {
     return {
-      score: 50,
-      explanation: 'Price data unavailable; momentum score set to neutral.',
+      dailyChangePercent: null,
+      hasPrice: false,
+      note: 'No price was available, so there is no market signal to report.',
     };
   }
 
-  let score = 50;
-  const factors: string[] = [];
-
-  const dailyChangePercent = typeof price.daily_change_percent === 'number'
-    ? price.daily_change_percent
-    : price.changePercent;
-
-  if (dailyChangePercent > 5) {
-    score += 25;
-    factors.push('Strong positive momentum with significant price increase');
-  } else if (dailyChangePercent > 0) {
-    score += 10;
-    factors.push('Positive price momentum');
-  } else if (dailyChangePercent < -5) {
-    score -= 25;
-    factors.push('Negative momentum with significant price decline');
-  } else if (dailyChangePercent < 0) {
-    score -= 10;
-    factors.push('Slight negative price momentum');
-  } else {
-    factors.push('Neutral price action');
+  if (price.changePercent === null) {
+    return {
+      dailyChangePercent: null,
+      hasPrice: true,
+      note: 'Price is available, but the provider did not report a session change for it.',
+    };
   }
 
-  // Volume-based momentum
-  if (price.volume > 1000000) {
-    score += 10;
-    factors.push('High trading volume indicates strong interest');
-  }
+  const direction = price.changePercent > 0 ? 'up' : price.changePercent < 0 ? 'down' : 'flat';
+  return {
+    dailyChangePercent: price.changePercent,
+    hasPrice: true,
+    note: `Price is ${direction} ${Math.abs(price.changePercent).toFixed(2)}% against the previous close.`,
+  };
+}
 
-  const explanation = factors.join('. ') + '.';
-  return { score: Math.max(0, Math.min(100, score)), explanation };
+export type VerdictLabel = 'favourable' | 'mixed' | 'cautious' | 'insufficient-data';
+
+export interface ScreeningVerdict {
+  label: VerdictLabel;
+  headline: string;
+  summary: string;
+  coverage: number;
+  basis: string;
+}
+
+export interface StockMetrics {
+  symbol: string;
+  sectorProfile: SectorProfile;
+  valuation: MetricScore;
+  businessQuality: MetricScore;
+  /** Mean of the sub-scores that exist, or null when none do. */
+  overallScore: number | null;
+  overallCoverage: number;
 }
 
 /**
- * Calculate comprehensive stock metrics with explanations
- * @param fundamentals - Stock fundamental data
- * @param price - Current stock price data
- * @returns Stock metrics with scores and explanations
+ * Combine the two screening scores that actually exist.
+ *
+ * A missing sub-score is left out of the average and lowers the stated coverage
+ * rather than pulling the result towards neutral.
  */
-export function calculateMetrics(
-  fundamentals: StockFundamentals,
-  price: StockPrice | null
-): StockMetrics {
-  const sectorProfile = inferSectorProfile(fundamentals.industry);
+function combineOverall(valuation: MetricScore, quality: MetricScore): {
+  score: number | null;
+  coverage: number;
+} {
+  const present = [valuation, quality].filter((metric) => metric.score !== null);
+  if (present.length === 0) return { score: null, coverage: 0 };
 
-  const valuation = calculateValuationScore(fundamentals, sectorProfile);
-  const growth = calculateGrowthScore(fundamentals);
-  const profitability = calculateProfitabilityScore(fundamentals, sectorProfile);
-  const momentum = calculateMomentumScore(price);
+  const average = present.reduce((sum, metric) => sum + metric.score!, 0) / present.length;
 
-  // Weighted overall score
-  const overallScore = Math.round(
-    valuation.score * 0.3 +
-    growth.score * 0.25 +
-    profitability.score * 0.25 +
-    momentum.score * 0.2
-  );
+  const considered = valuation.considered + quality.considered;
+  const available = valuation.available + quality.available;
+
+  return {
+    score: clamp(Math.round(average)),
+    coverage: considered === 0 ? 0 : available / considered,
+  };
+}
+
+export function calculateMetrics(fundamentals: StockFundamentals): StockMetrics {
+  const { profile } = inferSectorProfile(fundamentals.sector);
+
+  const valuation = calculateValuationScore(fundamentals, profile);
+  const businessQuality = calculateBusinessQualityScore(fundamentals, profile);
+  const overall = combineOverall(valuation, businessQuality);
 
   return {
     symbol: fundamentals.symbol,
-    valuationScore: Math.round(valuation.score),
-    growthScore: Math.round(growth.score),
-    profitabilityScore: Math.round(profitability.score),
-    momentumScore: Math.round(momentum.score),
-    overallScore,
-    explanation: {
-      valuation: valuation.explanation,
-      growth: growth.explanation,
-      profitability: profitability.explanation,
-      momentum: momentum.explanation,
-    },
+    sectorProfile: profile,
+    valuation,
+    businessQuality,
+    overallScore: overall.score,
+    overallCoverage: overall.coverage,
   };
 }
 
 /**
- * Get the educational display label based on overall score
+ * Turn the screening scores into a plain-language reading.
+ *
+ * The wording describes what was computed. It never calls a screening score a
+ * fair price, a recommendation, or a setup, because none of those is what a
+ * band comparison can tell you.
  */
-export function getRecommendation(overallScore: number): string {
-  if (overallScore >= 75) return 'High Score';
-  if (overallScore >= 60) return 'Moderate-High Score';
-  if (overallScore >= 45) return 'Neutral Score';
-  if (overallScore >= 30) return 'Moderate-Low Score';
-  return 'Low Score';
+export function describeVerdict(metrics: StockMetrics): ScreeningVerdict {
+  const { overallScore, overallCoverage, valuation, businessQuality } = metrics;
+
+  if (overallScore === null) {
+    return {
+      label: 'insufficient-data',
+      headline: 'Not enough data to screen',
+      summary:
+        'The provider did not publish the metrics this screen needs, so Finalysis has nothing to compare against sector bands. It is not a judgement about the company.',
+      coverage: 0,
+      basis: 'No screening inputs were available.',
+    };
+  }
+
+  const parts: string[] = [];
+  if (valuation.score !== null) parts.push(`valuation ${valuation.score}/100`);
+  if (businessQuality.score !== null) parts.push(`business quality ${businessQuality.score}/100`);
+
+  const basis = `Based on ${parts.join(' and ')}, using ${metrics.sectorProfile.label} bands.`;
+
+  const thin = overallCoverage < 0.5;
+  const coverageNote = thin
+    ? ` Only ${Math.round(overallCoverage * 100)}% of the metrics this screen uses were available, so treat the reading as provisional.`
+    : '';
+
+  if (overallScore >= 60) {
+    return {
+      label: 'favourable',
+      headline: 'Screening reads favourably',
+      summary: `The available metrics sit on the stronger side of the bands for this sector.${coverageNote}`,
+      coverage: overallCoverage,
+      basis,
+    };
+  }
+
+  if (overallScore >= 40) {
+    return {
+      label: 'mixed',
+      headline: 'Screening reads mixed',
+      summary: `The available metrics fall around the middle of the sector bands, with offsetting strengths and weaknesses.${coverageNote}`,
+      coverage: overallCoverage,
+      basis,
+    };
+  }
+
+  return {
+    label: 'cautious',
+    headline: 'Screening reads cautious',
+    summary: `Most available metrics sit on the weaker side of the sector bands.${coverageNote}`,
+    coverage: overallCoverage,
+    basis,
+  };
 }
