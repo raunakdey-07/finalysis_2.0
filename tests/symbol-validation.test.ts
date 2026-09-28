@@ -3,11 +3,7 @@
  * Verifies deterministic behavior across the common input surface.
  */
 import { describe, it, expect } from 'vitest';
-import {
-  parseRequiredNseSymbol,
-  parseOptionalNseSymbol,
-  NSE_SYMBOL_REGEX,
-} from '@/lib/utils/symbol';
+import { parseRequiredNseSymbol, NSE_SYMBOL_REGEX } from '@/lib/utils/symbol';
 
 describe('parseRequiredNseSymbol', () => {
   it('accepts a bare uppercase ticker', () => {
@@ -57,19 +53,6 @@ describe('parseRequiredNseSymbol', () => {
 
   it('rejects whitespace-only input', () => {
     expect(parseRequiredNseSymbol('   ').success).toBe(false);
-  });
-});
-
-describe('parseOptionalNseSymbol', () => {
-  it('returns null symbol for empty input', () => {
-    expect(parseOptionalNseSymbol(null)).toEqual({ success: true, symbol: null });
-    expect(parseOptionalNseSymbol(undefined)).toEqual({ success: true, symbol: null });
-    expect(parseOptionalNseSymbol('')).toEqual({ success: true, symbol: null });
-  });
-
-  it('delegates to required validation for non-empty input', () => {
-    expect(parseOptionalNseSymbol('RELIANCE')).toEqual({ success: true, symbol: 'RELIANCE' });
-    expect(parseOptionalNseSymbol('bad!').success).toBe(false);
   });
 });
 

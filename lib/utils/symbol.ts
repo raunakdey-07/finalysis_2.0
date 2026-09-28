@@ -34,23 +34,3 @@ export function parseRequiredNseSymbol(raw: string | null | undefined): SymbolVa
   };
 }
 
-export function parseOptionalNseSymbol(raw: string | null | undefined):
-  | { success: true; symbol: string | null }
-  | { success: false; error: string; errorCode: SymbolValidationErrorCode } {
-  if (!raw || raw.trim().length === 0) {
-    return {
-      success: true,
-      symbol: null,
-    };
-  }
-
-  const parsed = parseRequiredNseSymbol(raw);
-  if (!parsed.success) {
-    return parsed;
-  }
-
-  return {
-    success: true,
-    symbol: parsed.symbol,
-  };
-}

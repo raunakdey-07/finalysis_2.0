@@ -278,6 +278,17 @@ const normalizedEntries: NormalizedSymbolEntry[] = symbols.map((entry) => ({
 
   const entriesBySymbol = new Map(normalizedEntries.map((entry) => [entry.symbol.toUpperCase(), entry]));
 
+  /** The dataset row exactly as checked in, keyed by canonical ticker. */
+  const rawBySymbol = new Map(symbols.map((entry) => [entry.symbol.toUpperCase(), entry]));
+
+  /** How many NSE tickers the product actually covers. Used in user-facing copy. */
+  export const COVERED_SYMBOL_COUNT = normalizedEntries.length;
+
+  /** Covered tickers in a stable, sorted order so job slices are reproducible. */
+  export const COVERED_SYMBOLS: string[] = normalizedEntries
+    .map((entry) => entry.symbol.replace(/\.NS$/i, '').toUpperCase())
+    .sort();
+
   function inSector(entry: NormalizedSymbolEntry, sectorFilter: ResolvedSector | null): boolean {
     if (!sectorFilter) return true;
     return entry.sector === sectorFilter;
@@ -506,6 +517,25 @@ export function resolveSymbol(query: string, options: ResolveSymbolOptions = {})
     message: 'Multiple results found. Please select:',
     suggestions: formatSuggestions(topSuggestions.map((s) => s.entry), limit),
   };
+}
+
+/**
+ * True when the ticker is one Finalysis actually claims to cover.
+ *
+ * Routes use this before any upstream request so that an unknown ticker costs
+ * a map lookup rather than a scrape of a third-party site.
+ */
+export function isKnownSymbol(symbol: string): boolean {
+  const normalized = symbol.toUpperCase().trim().replace(/\.NS$/i, '');
+  if (!normalized) return false;
+  return entriesBySymbol.has(`${normalized}.NS`);
+}
+
+/** The dataset entry for a ticker, or null when it is not covered. */
+export function getSymbolEntry(symbol: string): SymbolEntry | null {
+  const normalized = symbol.toUpperCase().trim().replace(/\.NS$/i, '');
+  if (!normalized) return null;
+  return rawBySymbol.get(`${normalized}.NS`) ?? null;
 }
 
 /**

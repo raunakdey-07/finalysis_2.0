@@ -1,109 +1,121 @@
-/**
- * API Route: /api/metrics
- * Get explainable metrics for a stock
- */
-
 import { NextRequest, NextResponse } from 'next/server';
-import { calculateMetrics, getRecommendation } from '@/lib/metrics';
-import { fetchNSEQuote } from '@/lib/nse';
+import { failure, guardRateLimit, guardSymbol } from '@/lib/api';
+import { describeOutage, logDetail } from '@/lib/errors';
+import {
+  calculateMetrics,
+  describeVerdict,
+  type ScreeningVerdict,
+  type StockMetrics,
+} from '@/lib/metrics';
 import { fetchFundamentals } from '@/lib/fundamentals';
-import { rateLimit, getClientId, RATE_LIMITS } from '@/lib/rate-limit';
-import { parseRequiredNseSymbol } from '@/lib/utils/symbol';
-import { ApiResponse, StockFundamentals, StockMetrics, StockPrice } from '@/types';
+import { fetchNSEQuote } from '@/lib/nse';
+import type { ApiResponse, Provenance, StockFundamentals, StockPrice } from '@/types';
+
+const CACHE_CONTROL = 'public, s-maxage=120, stale-while-revalidate=300';
+
+function mergeWarnings(...sources: (Provenance['warnings'] | undefined)[]): string[] | undefined {
+  const merged = sources.flatMap((source) => source ?? []);
+  return merged.length > 0 ? Array.from(new Set(merged)) : undefined;
+}
+
+/** The lower of two confidence levels, so a weak source is never hidden. */
+const CONFIDENCE_RANK = { unavailable: 0, low: 1, medium: 2, high: 3 } as const;
+
+function weakest(levels: Array<keyof typeof CONFIDENCE_RANK>): keyof typeof CONFIDENCE_RANK {
+  return levels.reduce((lowest, level) =>
+    CONFIDENCE_RANK[level] < CONFIDENCE_RANK[lowest] ? level : lowest
+  );
+}
+
+/**
+ * Everything one stock overview needs: the price with its freshness, the
+ * screening scores, and enough provenance for the page to be honest about what
+ * it does not know.
+ */
+export interface MetricsPayload {
+  fundamentals: StockFundamentals | null;
+  metrics: StockMetrics | null;
+  verdict: ScreeningVerdict | null;
+  quote: StockPrice | null;
+  quoteProvenance: Provenance | null;
+  fundamentalsProvenance: Provenance | null;
+}
 
 export async function GET(request: NextRequest) {
-  // Rate limiting
-  const clientId = getClientId(request.headers);
-  const rateLimitResult = rateLimit(`metrics:${clientId}`, RATE_LIMITS.metrics);
-  
-  if (!rateLimitResult.success) {
-    return NextResponse.json(
-      { success: false, error: `Rate limit exceeded. Try again in ${rateLimitResult.resetIn}s.`, errorCode: 'RATE_LIMITED', timestamp: new Date().toISOString() },
-      { status: 429, headers: { 'Retry-After': String(rateLimitResult.resetIn) } }
-    );
-  }
+  const limited = guardRateLimit(request, 'metrics');
+  if (limited) return limited;
+
+  const { symbol, error } = guardSymbol(request, { required: true });
+  if (error || !symbol) return error ?? failure(400, 'Symbol is required', 'VALIDATION_ERROR');
 
   try {
-    const searchParams = request.nextUrl.searchParams;
-    const parsedSymbol = parseRequiredNseSymbol(searchParams.get('symbol'));
-    if (!parsedSymbol.success) {
-      const errorResponse: ApiResponse<null> = {
-        success: false,
-        error: parsedSymbol.error,
-        errorCode: parsedSymbol.errorCode,
-        timestamp: new Date().toISOString(),
-      };
-      return NextResponse.json(errorResponse, { status: 400 });
-    }
+    const [quoteResult, fundamentalsResult] = await Promise.all([
+      fetchNSEQuote(symbol),
+      fetchFundamentals(symbol),
+    ]);
 
-    const symbolUpper = parsedSymbol.symbol;
-    
-    // Fetch current price
-    const { price, provenance: priceProvenance } = await fetchNSEQuote(symbolUpper);
-    const { fundamentals, provenance: fundamentalsProvenance } = await fetchFundamentals(symbolUpper);
+    const fundamentals = fundamentalsResult.fundamentals;
+    const metrics = fundamentals ? calculateMetrics(fundamentals) : null;
+    const verdict = metrics ? describeVerdict(metrics) : null;
 
-    if (!fundamentals) {
-      const response: ApiResponse<null> = {
+    const warnings = mergeWarnings(
+      quoteResult.provenance.warnings,
+      fundamentalsResult.provenance.warnings
+    );
+
+    if (!fundamentals && !quoteResult.price) {
+      const body: ApiResponse<null> = {
         success: false,
         data: null,
-        error: `Metrics unavailable for ${symbolUpper}.`,
-        errorCode: 'METRICS_UNAVAILABLE',
+        error: `Nothing could be retrieved for ${symbol}.`,
+        errorCode: 'DATA_UNAVAILABLE',
         timestamp: new Date().toISOString(),
         provenance: {
-          source: `${priceProvenance.source} + ${fundamentalsProvenance.source}`,
-          lastUpdated: priceProvenance.lastUpdated,
-          cacheTTL: `${priceProvenance.cacheTTL} / ${fundamentalsProvenance.cacheTTL}`,
-          cacheHit: priceProvenance.cacheHit || fundamentalsProvenance.cacheHit,
-          confidenceLevel: priceProvenance.confidenceLevel,
-          warnings: [
-            ...(priceProvenance.warnings || []),
-            ...(fundamentalsProvenance.warnings || []),
-          ],
+          source: `${quoteResult.provenance.source} + ${fundamentalsResult.provenance.source}`,
+          lastUpdated: null,
+          cacheTTL: '10m / 30d',
+          cacheHit: false,
+          confidenceLevel: 'unavailable',
+          warnings,
         },
       };
-      return NextResponse.json(response, { status: 404 });
+      return NextResponse.json(body, { status: 503 });
     }
 
-    const metrics = calculateMetrics(fundamentals, price ?? null);
-    const recommendation = getRecommendation(metrics.overallScore);
-    const warnings = [
-      ...(priceProvenance.warnings || []),
-      ...(fundamentalsProvenance.warnings || []),
-      ...(price ? [] : ['Price unavailable; momentum score set to neutral.']),
-    ];
+    const payload: MetricsPayload = {
+      fundamentals,
+      metrics,
+      verdict,
+      quote: quoteResult.price,
+      quoteProvenance: quoteResult.provenance,
+      fundamentalsProvenance: fundamentalsResult.provenance,
+    };
 
-    const response: ApiResponse<StockMetrics & { recommendation: string; fundamentals: StockFundamentals; quote: StockPrice | null }> = {
+    const body: ApiResponse<MetricsPayload> = {
       success: true,
-      data: {
-        ...metrics,
-        recommendation,
-        fundamentals,
-        quote: price ?? null,
-      },
+      data: payload,
       timestamp: new Date().toISOString(),
       provenance: {
-        source: `${priceProvenance.source} + ${fundamentalsProvenance.source}`,
-        lastUpdated: priceProvenance.lastUpdated,
-        cacheTTL: `${priceProvenance.cacheTTL} / ${fundamentalsProvenance.cacheTTL}`,
-        cacheHit: priceProvenance.cacheHit || fundamentalsProvenance.cacheHit,
-        confidenceLevel: priceProvenance.confidenceLevel,
-        warnings: warnings.length > 0 ? warnings : undefined,
+        source: `${quoteResult.provenance.source} + ${fundamentalsResult.provenance.source}`,
+        // The price is the fastest-moving input, so it sets the headline time.
+        lastUpdated: quoteResult.provenance.lastUpdated,
+        cacheTTL: '10m / 30d',
+        cacheHit: quoteResult.provenance.cacheHit && fundamentalsResult.provenance.cacheHit,
+        confidenceLevel: !quoteResult.price
+          ? 'low'
+          : !fundamentals
+            ? 'low'
+            : weakest([
+                quoteResult.provenance.confidenceLevel,
+                fundamentalsResult.provenance.confidenceLevel,
+              ]),
+        warnings,
       },
     };
 
-    return NextResponse.json(response, {
-      status: 200,
-      headers: {
-        'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=600',
-      },
-    });
+    return NextResponse.json(body, { status: 200, headers: { 'Cache-Control': CACHE_CONTROL } });
   } catch (error) {
-    const errorResponse: ApiResponse<null> = {
-      success: false,
-      error: error instanceof Error ? error.message : 'Internal server error',
-      errorCode: 'INTERNAL_ERROR',
-      timestamp: new Date().toISOString(),
-    };
-    return NextResponse.json(errorResponse, { status: 500 });
+    console.warn(logDetail('fundamentals', error));
+    return failure(500, describeOutage('fundamentals', error), 'INTERNAL_ERROR');
   }
 }
