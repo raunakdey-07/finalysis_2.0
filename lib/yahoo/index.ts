@@ -1,197 +1,242 @@
 import { StockPrice } from '@/types';
-import { fetchWithTimeout } from '@/lib/utils/fetch-with-timeout';
+import { fetchJson } from '@/lib/utils/fetch-with-timeout';
 
 const YAHOO_BASE_URL = 'https://query1.finance.yahoo.com';
+const REQUEST_TIMEOUT_MS = 10_000;
+
+/**
+ * Plausibility band for an NSE share price in rupees.
+ *
+ * This is a unit-error guard, not a business rule. It catches provider glitches
+ * that hand back a fraction of a rupee or a misplaced decimal, and it rejects
+ * loudly rather than displaying the number.
+ */
+const MIN_PLAUSIBLE_PRICE = 0.01;
+const MAX_PLAUSIBLE_PRICE = 100_000;
+
+/** An NSE equity is quoted in rupees. Anything else is a different instrument. */
+const EXPECTED_CURRENCY = 'INR';
+
 const YAHOO_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+  'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
   Accept: 'application/json,text/plain,*/*',
   'Accept-Language': 'en-US,en;q=0.9',
 };
 
+/**
+ * A quote as the provider reports it, before Finalysis decides how fresh it is.
+ * The freshness label is added one layer up, where the retrieval path is known.
+ */
+export type YahooQuote = Omit<StockPrice, 'freshness'>;
+
+type YahooSeries = {
+  open?: (number | null)[];
+  high?: (number | null)[];
+  low?: (number | null)[];
+  close?: (number | null)[];
+  volume?: (number | null)[];
+};
+
+export interface YahooChartMeta {
+  symbol?: string;
+  longName?: string;
+  shortName?: string;
+  currency?: string;
+  exchangeName?: string;
+  exchangeTimezoneName?: string;
+  regularMarketPrice?: number;
+  regularMarketChangePercent?: number;
+  fulldayChange?: number;
+  regularMarketVolume?: number;
+  regularMarketOpen?: number;
+  regularMarketDayHigh?: number;
+  regularMarketDayLow?: number;
+  fiftyTwoWeekHigh?: number;
+  fiftyTwoWeekLow?: number;
+  regularMarketTime?: number;
+}
+
+export interface YahooChartResult {
+  meta?: YahooChartMeta;
+  indicators?: { quote?: YahooSeries[] };
+}
+
 interface YahooChartResponse {
   chart?: {
-    result?: Array<{
-      meta?: {
-        symbol?: string;
-        longName?: string;
-        shortName?: string;
-        currency?: string;
-        exchangeName?: string;
-        regularMarketPrice?: number;
-        chartPreviousClose?: number;
-        regularMarketVolume?: number;
-        regularMarketOpen?: number;
-        regularMarketDayHigh?: number;
-        regularMarketDayLow?: number;
-        fiftyTwoWeekHigh?: number;
-        fiftyTwoWeekLow?: number;
-        regularMarketTime?: number;
-      };
-    }>;
+    result?: YahooChartResult[];
     error?: { code?: string; description?: string } | null;
   };
 }
 
-interface YahooSearchQuote {
-  symbol?: string;
-  quoteType?: string;
-  shortname?: string;
-  longname?: string;
-  exchange?: string;
-  exchDisp?: string;
-  score?: number;
+export class QuoteRejected extends Error {
+  constructor(public readonly symbol: string, public readonly reason: string) {
+    super(reason);
+    this.name = 'QuoteRejected';
+  }
 }
 
-interface YahooSearchResponse {
-  quotes?: YahooSearchQuote[];
-  error?: string | null;
+function isPositiveNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0;
 }
 
-function normalizeSymbol(symbol: string): string {
-  return symbol.toUpperCase().trim();
+function atLastIndex(series: (number | null)[] | undefined): number | null {
+  if (!series || series.length === 0) return null;
+  const value = series[series.length - 1];
+  return isPositiveNumber(value) ? value : null;
 }
 
-function stripNseSuffix(symbol: string): string {
-  return symbol.replace(/\.NS$/i, '');
+/**
+ * Close of the session before the one being quoted.
+ *
+ * Yahoo leaves the current session's close null while the session is live, and
+ * fills it in once the market closes. So the last populated bar is the previous
+ * session while trading, and today's bar once the market has closed, where we
+ * need to step one further back.
+ */
+function previousSessionClose(series: (number | null)[] | undefined): number | null {
+  if (!series || series.length === 0) return null;
+
+  const populated: { index: number; value: number }[] = [];
+  series.forEach((value, index) => {
+    if (isPositiveNumber(value)) populated.push({ index, value });
+  });
+
+  if (populated.length === 0) return null;
+
+  const last = populated[populated.length - 1];
+  if (last.index < series.length - 1) return last.value;
+  return populated.length >= 2 ? populated[populated.length - 2].value : null;
 }
 
-function buildQuoteCandidates(symbol: string): string[] {
-  const normalized = normalizeSymbol(symbol);
-  if (normalized.includes('.')) {
-    return [normalized];
+/** Convert a provider percentage against `price` into the absolute move. */
+function absoluteFromPercent(price: number, percent: number): number {
+  const denominator = 100 + percent;
+  if (denominator === 0) return 0;
+  return (price * percent) / denominator;
+}
+
+/**
+ * Turn a Yahoo chart result into a quote, or reject it.
+ *
+ * Exported so the parsing rules can be tested against captured provider
+ * payloads without a network call.
+ */
+export function parseYahooChartResult(
+  result: YahooChartResult,
+  requested: string
+): YahooQuote {
+  const meta = result.meta;
+  const price = meta?.regularMarketPrice;
+
+  if (!isPositiveNumber(price)) {
+    throw new QuoteRejected(requested, 'Provider returned no usable price');
   }
 
-  return [normalized, `${normalized}.NS`, `${normalized}.BO`];
+  if (meta?.currency !== EXPECTED_CURRENCY) {
+    throw new QuoteRejected(
+      requested,
+      `Provider quoted this instrument in ${meta?.currency ?? 'an unknown currency'}, not ${EXPECTED_CURRENCY}`
+    );
+  }
+
+  if (price < MIN_PLAUSIBLE_PRICE || price > MAX_PLAUSIBLE_PRICE) {
+    throw new QuoteRejected(
+      requested,
+      `Provider returned a price outside the plausible range for an NSE share`
+    );
+  }
+
+  const series = result.indicators?.quote?.[0];
+  const previousClose = previousSessionClose(series?.close);
+
+  // Prefer the provider's own session change. It is the only value Yahoo
+  // computes against the right baseline in both live and closed markets.
+  let change: number | null = null;
+  let changePercent: number | null = null;
+
+  if (Number.isFinite(meta?.regularMarketChangePercent)) {
+    changePercent = meta!.regularMarketChangePercent as number;
+    change = absoluteFromPercent(price, changePercent);
+  } else if (Number.isFinite(meta?.fulldayChange)) {
+    change = meta!.fulldayChange as number;
+    if (previousClose) changePercent = (change / previousClose) * 100;
+  } else if (previousClose) {
+    change = price - previousClose;
+    changePercent = (change / previousClose) * 100;
+  }
+
+  const quotedAtSeconds = meta?.regularMarketTime;
+
+  return {
+    symbol: meta?.symbol ?? requested,
+    price,
+    change,
+    changePercent,
+    volume: isPositiveNumber(meta?.regularMarketVolume) ? meta.regularMarketVolume : null,
+    previousClose,
+    dayOpen: isPositiveNumber(meta?.regularMarketOpen)
+      ? meta.regularMarketOpen
+      : atLastIndex(series?.open),
+    dayHigh: isPositiveNumber(meta?.regularMarketDayHigh) ? meta.regularMarketDayHigh : null,
+    dayLow: isPositiveNumber(meta?.regularMarketDayLow) ? meta.regularMarketDayLow : null,
+    fiftyTwoWeekHigh: isPositiveNumber(meta?.fiftyTwoWeekHigh) ? meta.fiftyTwoWeekHigh : null,
+    fiftyTwoWeekLow: isPositiveNumber(meta?.fiftyTwoWeekLow) ? meta.fiftyTwoWeekLow : null,
+    quotedAt: Number.isFinite(quotedAtSeconds)
+      ? new Date((quotedAtSeconds as number) * 1000).toISOString()
+      : null,
+    fetchedAt: new Date().toISOString(),
+    exchangeTimezone: meta?.exchangeTimezoneName ?? null,
+  };
 }
 
-async function fetchYahooChart(symbol: string): Promise<YahooChartResponse> {
-  const response = await fetchWithTimeout(
+async function fetchYahooChart(symbol: string): Promise<YahooChartResult | null> {
+  const response = await fetchJson<YahooChartResponse>(
     `${YAHOO_BASE_URL}/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=5d`,
     { headers: YAHOO_HEADERS },
-    10_000
+    REQUEST_TIMEOUT_MS
   );
 
+  if (response.status === 404) return null;
   if (!response.ok) {
     throw new Error(`Yahoo Finance chart error: ${response.status}`);
   }
 
-  return response.json() as Promise<YahooChartResponse>;
+  return response.data.chart?.result?.[0] ?? null;
 }
 
-function toPrice(result: NonNullable<NonNullable<YahooChartResponse['chart']>['result']>[number]): StockPrice | null {
-  const meta = result.meta;
-  const currentPrice = meta?.regularMarketPrice;
+/**
+ * Candidate Yahoo symbols for an NSE ticker, most specific first.
+ *
+ * The NSE listing is authoritative. We deliberately do not consult Yahoo's
+ * fuzzy search to guess a ticker, because that search happily returns an
+ * unrelated company whose symbol merely resembles the query, and a price from
+ * one company paired with fundamentals from another is worse than no price.
+ */
+function buildQuoteCandidates(symbol: string): string[] {
+  const normalized = symbol.toUpperCase().trim();
 
-  // Currency validation: NSE equities must be quoted in INR.
-  // Reject quotes in USD/other currencies to prevent unit errors.
-  const currency = meta?.currency;
-  if (currency === 'USD' || currency === 'EUR' || currency === 'GBP') {
-    return null;
-  }
+  if (normalized.includes('.')) return [normalized];
 
-  if (typeof currentPrice !== 'number' || !Number.isFinite(currentPrice) || currentPrice <= 0) {
-    return null;
-  }
-
-  // Sanity check: NSE equity prices should not be < ₹0.10 or > ₹50,000.
-  // This catches decimal/unit errors (e.g., 0.0017 instead of 14.3).
-  if (currentPrice < 0.10 || currentPrice > 50000) {
-    return null;
-  }
-
-  const previousClose = meta?.chartPreviousClose ?? currentPrice;
-  const change = currentPrice - previousClose;
-  const changePercent = previousClose > 0 ? (change / previousClose) * 100 : 0;
-
-  return {
-    symbol: meta?.symbol ?? '',
-    price: currentPrice,
-    change,
-    changePercent,
-    daily_change_percent: changePercent,
-    volume: meta?.regularMarketVolume ?? 0,
-    open: meta?.regularMarketOpen ?? currentPrice,
-    high: meta?.regularMarketDayHigh,
-    low: meta?.regularMarketDayLow,
-    previousClose,
-    fiftyTwoWeekHigh: meta?.fiftyTwoWeekHigh,
-    fiftyTwoWeekLow: meta?.fiftyTwoWeekLow,
-    timestamp: new Date((meta?.regularMarketTime ?? Math.floor(Date.now() / 1000)) * 1000),
-  };
+  return [`${normalized}.NS`, `${normalized}.BO`, normalized];
 }
 
-export async function fetchYahooQuote(symbol: string): Promise<StockPrice> {
-  const searchFirst = !symbol.includes('.') && !symbol.includes(':');
-  const candidates: string[] = [];
+export async function fetchYahooQuote(symbol: string): Promise<YahooQuote> {
+  const candidates = buildQuoteCandidates(symbol);
+  let rejection: QuoteRejected | Error | null = null;
 
-  if (searchFirst) {
-    const resolved = await searchYahooSymbol(symbol);
-    if (resolved) {
-      candidates.push(resolved);
-    }
-  }
-
-  for (const candidate of buildQuoteCandidates(symbol)) {
-    if (!candidates.includes(candidate)) {
-      candidates.push(candidate);
-    }
-  }
-
-  let lastError: unknown;
   for (const candidate of candidates) {
     try {
-      const data = await fetchYahooChart(candidate);
-      const chartResult = data.chart?.result?.[0];
-      if (!chartResult) {
-        throw new Error('quote-not-found');
-      }
-
-      const stockPrice = toPrice(chartResult);
-      if (!stockPrice) {
-        throw new Error('quote-not-found');
-      }
-
-      return {
-        ...stockPrice,
-        symbol: stripNseSuffix(stockPrice.symbol || candidate),
-      };
+      const result = await fetchYahooChart(candidate);
+      if (!result) continue;
+      return parseYahooChartResult(result, symbol);
     } catch (error) {
-      lastError = error;
+      rejection = error instanceof Error ? error : new Error('Yahoo Finance quote fetch failed');
     }
   }
 
-  throw lastError instanceof Error ? lastError : new Error('Yahoo Finance quote fetch failed');
-}
-
-async function searchYahooSymbol(query: string): Promise<string | null> {
-  const response = await fetchWithTimeout(
-    `${YAHOO_BASE_URL}/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=10&newsCount=0`,
-    { headers: YAHOO_HEADERS },
-    10_000
+  if (rejection instanceof QuoteRejected) throw rejection;
+  throw new Error(
+    `No NSE quote available for ${symbol}${rejection ? ` (${rejection.message})` : ''}`
   );
-
-  if (!response.ok) {
-    throw new Error(`Yahoo Finance search error: ${response.status}`);
-  }
-
-  const data = (await response.json()) as YahooSearchResponse;
-  const quote = (data.quotes ?? []).find((item) => item.quoteType === 'EQUITY' && item.symbol);
-  return quote?.symbol ?? null;
-}
-
-export async function searchYahooSymbols(query: string): Promise<string[]> {
-  const response = await fetchWithTimeout(
-    `${YAHOO_BASE_URL}/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=10&newsCount=0`,
-    { headers: YAHOO_HEADERS },
-    10_000
-  );
-
-  if (!response.ok) {
-    throw new Error(`Yahoo Finance search error: ${response.status}`);
-  }
-
-  const data = (await response.json()) as YahooSearchResponse;
-  return (data.quotes ?? [])
-    .filter((quote) => quote.quoteType === 'EQUITY' && Boolean(quote.symbol))
-    .map((quote) => stripNseSuffix(quote.symbol as string));
 }
