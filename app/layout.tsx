@@ -1,7 +1,18 @@
 import type { Metadata, Viewport } from "next";
+import { IBM_Plex_Sans } from "next/font/google";
 import "./globals.css";
 
+const plex = IBM_Plex_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  display: "swap",
+  variable: "--font-plex",
+});
+
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://finalysis.vercel.app";
+
+const description =
+  "Read an NSE company from published numbers: price with its timestamp, valuation and returns against sector bands, and recent headlines. Educational research, not financial advice.";
 
 const structuredData = {
   "@context": "https://schema.org",
@@ -10,32 +21,26 @@ const structuredData = {
       "@type": "WebSite",
       name: "Finalysis",
       url: siteUrl,
-      description:
-        "Simple stock research for India. Understand any NSE stock through business quality, momentum, and valuation context.",
+      description,
       inLanguage: "en-IN",
-      potentialAction: {
-        "@type": "SearchAction",
-        target: `${siteUrl}/?symbol={search_term_string}`,
-        "query-input": "required name=search_term_string",
-      },
     },
     {
       "@type": "FAQPage",
       mainEntity: [
         {
           "@type": "Question",
-          name: "What does Finalysis evaluate for NSE stocks?",
+          name: "What does Finalysis show for an NSE company?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "Finalysis evaluates business quality, momentum, and valuation with explainable signals and investor-friendly red-flag context.",
+            text: "A share price with the exchange timestamp it was recorded, published valuation and return figures compared against sector bands, and recent headlines. Every figure states where it came from and when it was true.",
           },
         },
         {
           "@type": "Question",
-          name: "Is Finalysis financial advice?",
+          name: "Does Finalysis give financial advice?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "No. Finalysis is an educational stock research and screening tool. Always do your own research before investing.",
+            text: "No. Finalysis is an educational research tool. Its scores are arithmetic on a few published numbers, not recommendations, predictions, or target prices.",
           },
         },
       ],
@@ -45,49 +50,38 @@ const structuredData = {
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
-  title: "Finalysis - Simple Stock Research for India",
-  description: "Understand any NSE stock in 30 seconds. We answer three questions: Is it a good business? Is it improving? Is the price fair?",
+  title: "Finalysis: NSE company figures, with sources and timestamps",
+  description,
   icons: {
     icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
     shortcut: "/icon.svg",
   },
-  alternates: {
-    canonical: "/",
-  },
-  keywords: ["stock research", "NSE", "Indian stocks", "fundamental analysis", "value investing", "stock analysis"],
-  authors: [{ name: "Finalysis" }],
+  alternates: { canonical: "/" },
   openGraph: {
-    title: "Finalysis - Simple Stock Research for India",
-    description: "Understand any NSE stock in 30 seconds. Free, educational stock research tool.",
+    title: "Finalysis: NSE company figures, with sources and timestamps",
+    description,
     url: "/",
     type: "website",
     locale: "en_IN",
   },
   twitter: {
     card: "summary",
-    title: "Finalysis - Simple Stock Research for India",
-    description: "Understand any NSE stock in 30 seconds. Free, educational stock research tool.",
+    title: "Finalysis: NSE company figures, with sources and timestamps",
+    description,
   },
-  robots: {
-    index: true,
-    follow: true,
-  },
+  robots: { index: true, follow: true },
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#1c1917",
+  themeColor: "#fafaf9",
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
-      <body className="antialiased">
+    <html lang="en-IN" className={plex.variable}>
+      <body className={plex.className}>
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}

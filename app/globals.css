@@ -1,27 +1,49 @@
 @import "tailwindcss";
 
+/*
+ * The site is deliberately light-only.
+ *
+ * A dark palette was previously declared here while every component hard-coded
+ * light stone surfaces, which rendered a near-black page behind white cards.
+ * Shipping an undesigned dark theme would mean changing the palette across
+ * every surface, so instead the half-implementation is removed and the choice
+ * is made explicit.
+ */
 :root {
-  --background: #f7f7f5;
-  --foreground: #141414;
+  color-scheme: light;
+  --background: #fafaf9;
+  --foreground: #1c1917;
 }
 
 @theme {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: "IBM Plex Sans", "Source Sans 3", "Charter", "Georgia", serif;
-  --font-mono: "IBM Plex Mono", "SFMono-Regular", "ui-monospace", Menlo, monospace;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0d0f12;
-    --foreground: #e5e7eb;
-  }
+  --font-sans: var(--font-plex), ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: "IBM Plex Sans", "Source Sans 3", "Charter", "Georgia", serif;
+  font-family: var(--font-plex), ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    "Helvetica Neue", Arial, sans-serif;
   letter-spacing: 0.01em;
+  -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * Skeletons and hover transitions are decoration. When motion is not wanted,
+ * the information must still arrive, so the pulse stops rather than the
+ * element disappearing.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
