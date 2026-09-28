@@ -1,111 +1,107 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
 import {
-  Root as Dialog,
-  Content as DialogContent,
-  Title as DialogTitle,
-  Description as DialogDescription,
-  Portal,
-  Overlay,
-  Trigger,
-  Close,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+  DialogTrigger,
 } from "@radix-ui/react-dialog";
-import { acceptDisclaimer, hasAcceptedDisclaimer } from "@/lib/utils/disclaimer-storage";
 
-function subscribe(callback: () => void) {
-  window.addEventListener("storage", callback);
-  return () => window.removeEventListener("storage", callback);
-}
-
-function getServerSnapshot() {
-  return true; // Keep the dialog closed until browser storage can be checked.
-}
-
-export default function DisclaimerModal() {
-  const accepted = useSyncExternalStore(subscribe, hasAcceptedDisclaimer, getServerSnapshot);
-  // An explicit dismissal overrides automatic opening without recording acceptance.
-  const [open, setOpen] = useState<boolean | undefined>(undefined);
-
-  function handleAccept() {
-    acceptDisclaimer();
-    setOpen(false);
-  }
-
+/**
+ * Sources, methodology, and limits.
+ *
+ * Rendered on demand from the footer rather than forced on first visit, because
+ * a modal that blocks the page is both a worse experience and an easier thing
+ * to dismiss without reading. The same content also appears as plain text in
+ * the footer, so the disclosure is visible to a reader who never opens it.
+ */
+export function MethodologyDialog() {
   return (
-    <Dialog open={open ?? !accepted} onOpenChange={setOpen}>
-      <Trigger asChild>
+    <Dialog>
+      <DialogTrigger asChild>
         <button
           type="button"
-          className="rounded text-sm text-stone-600 underline underline-offset-4 hover:text-stone-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 focus-visible:ring-offset-2"
+          className="rounded text-xs font-medium text-stone-700 underline underline-offset-4 transition hover:text-stone-900 focus-visible:ring-2 focus-visible:ring-stone-700 focus-visible:ring-offset-2"
         >
-          Disclaimers &amp; Methodology
+          Sources, method, and limits
         </button>
-      </Trigger>
-      <Portal>
-        <Overlay className="fixed inset-0 z-50 bg-black/50" />
-        <DialogContent aria-modal="true" className="fixed left-1/2 top-1/2 z-50 max-h-[90vh] w-[calc(100%_-_2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl bg-white p-6 shadow-2xl sm:p-8">
-          <DialogTitle className="text-xl font-semibold text-stone-900">
-            Before you begin
-          </DialogTitle>
+      </DialogTrigger>
 
-          <div className="mt-4 space-y-4 text-sm leading-relaxed text-stone-600">
-            <DialogDescription>
-              <strong className="text-stone-800">Finalysis is an educational tool</strong> designed to help you understand
-              stocks better. It is not a substitute for professional financial advice.
-            </DialogDescription>
+      <DialogContent
+        aria-modal="true"
+        className="fixed left-1/2 top-1/2 z-50 max-h-[90vh] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-y-auto border border-stone-300 bg-white p-6 shadow-xl sm:p-8"
+      >
+        <DialogTitle className="text-lg font-semibold text-stone-900">
+          Sources, method, and limits
+        </DialogTitle>
 
-            <div className="rounded-lg bg-amber-50 p-4 text-amber-900">
-              <p className="font-medium">Important Disclaimers:</p>
-              <ul className="mt-2 list-inside list-disc space-y-1 text-amber-800">
-                <li>This is <strong>not financial advice</strong></li>
-                <li>Data may be delayed, incomplete, or inaccurate</li>
-                <li>Always verify information from official sources</li>
-                <li>Consult a SEBI-registered advisor before investing</li>
-              </ul>
-            </div>
+        <div className="mt-4 space-y-4 text-sm leading-relaxed text-stone-700">
+          <DialogDescription>
+            Finalysis is an educational research tool. It is not financial advice, not a
+            recommendation to buy or sell, and not a substitute for professional advice.
+          </DialogDescription>
 
-            <p>
-              <strong className="text-stone-800">Data sources:</strong> Prices come from the Yahoo Finance public API,
-              not a direct NSE feed. Fundamentals are extracted from Screener.in public pages.
-              Prices may be delayed and fundamentals may be outdated.
+          <div className="border-l-2 border-amber-500 bg-amber-50 px-4 py-3 text-amber-900">
+            <p className="font-medium">Before you rely on anything here</p>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-amber-900">
+              <li>Market data is delayed and may be wrong.</li>
+              <li>Company figures come from a public web page and are only as current as that page.</li>
+              <li>Scores are arithmetic on a few published numbers, not predictions.</li>
+              <li>Verify anything that matters against official filings before acting on it.</li>
+            </ul>
+          </div>
+
+          <div>
+            <h3 className="font-medium text-stone-900">Where the numbers come from</h3>
+            <ul className="mt-1.5 space-y-1.5">
+              <li>
+                <strong className="font-medium">Prices</strong> are read from Yahoo Finance and carry
+                the exchange timestamp. When a live price is unavailable, Finalysis says so and shows
+                an older close rather than presenting it as current.
+              </li>
+              <li>
+                <strong className="font-medium">Company figures</strong> are read from a public
+                Screener.in company page. Any figure the page does not publish is left blank. It is
+                never replaced with an estimate or a zero.
+              </li>
+              <li>
+                <strong className="font-medium">Headlines</strong> come from Google News RSS. They
+                are written by newsrooms, not by Finalysis.
+              </li>
+              <li>
+                <strong className="font-medium">The stock list</strong> is a checked-in dataset of
+                NSE tickers. Coverage is limited to what that list contains and to what the
+                providers publish for a given company.
+              </li>
+            </ul>
+          </div>
+
+          <div>
+            <h3 className="font-medium text-stone-900">How the scores work</h3>
+            <p className="mt-1.5">
+              Business quality and valuation are each built by starting from a neutral 50 and
+              adjusting it for published figures: return on equity, return on capital employed,
+              dividend yield, P/E, and P/B. Each is compared against ranges for the company&apos;s
+              sector.
             </p>
-
-            <p>
-              <strong className="text-stone-800">Methodology:</strong> Scores are rule-based, heuristic summaries of
-              available inputs, not probabilities, expected returns, or predictions. Review the underlying metrics,
-              their explanations, and data limitations rather than relying on a score alone.
-            </p>
-
-            <p>
-              <strong className="text-stone-800">No guarantees:</strong> Scores and verdicts are educational summaries,
-              not investment recommendations, and may not reflect actual investment quality. Past performance
-              does not guarantee future results.
-            </p>
-
-            <p className="text-xs text-stone-500">
-              Selecting “I understand, continue” records your acknowledgment of these limitations and educational use.
-              Closing this dialog does not record acceptance.
+            <p className="mt-1.5">
+              A figure that was not published contributes nothing and is named as missing. If no
+              figure a score needs was published, Finalysis shows no score at all rather than a
+              neutral one.
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={handleAccept}
-            className="mt-6 w-full rounded-lg bg-stone-900 py-3 text-sm font-medium text-white hover:bg-stone-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 focus-visible:ring-offset-2"
-          >
-            I understand, continue
-          </button>
-          <Close asChild>
-            <button
-              type="button"
-              className="mt-3 w-full rounded-lg py-2 text-sm font-medium text-stone-600 hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 focus-visible:ring-offset-2"
-            >
-              Close
-            </button>
-          </Close>
-        </DialogContent>
-      </Portal>
+          <div>
+            <h3 className="font-medium text-stone-900">What the scores do not do</h3>
+            <p className="mt-1.5">
+              They do not measure management quality, competitive advantage, accounting quality,
+              growth, or future returns. They are not probabilities, expected returns, or targets,
+              and they are not a judgement about whether a company is a good investment.
+            </p>
+          </div>
+        </div>
+      </DialogContent>
     </Dialog>
   );
 }
