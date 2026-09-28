@@ -1,152 +1,166 @@
 import { NextRequest, NextResponse } from 'next/server';
-import path from 'path';
-import { readFile } from 'fs/promises';
+import { timingSafeEqual } from 'node:crypto';
+import { boundedInt, failure } from '@/lib/api';
+import {
+  getDailyPricesSnapshot,
+  isRedisConfigured,
+  setDailyPricesSnapshot,
+  StoredQuote,
+} from '@/lib/nse/daily-prices';
 import { fetchNSEQuote } from '@/lib/nse';
-import { setDailyPricesSnapshot } from '@/lib/nse/daily-prices';
-import { StockPrice } from '@/types';
-
-type StockEntry = { symbol: string };
-
-type QuoteResult = {
-  symbol: string;
-  price: StockPrice | null;
-};
+import { COVERED_SYMBOLS } from '@/lib/symbol-resolver';
+import type { StockPrice } from '@/types';
 
 export const runtime = 'nodejs';
-export const maxDuration = 300;
+export const maxDuration = 120;
 
-const DEFAULT_CONCURRENCY = 6;
+/**
+ * A full sweep of the covered universe does not fit in one serverless
+ * invocation, and attempting it just produces a truncated snapshot that looks
+ * like it succeeded. The job instead walks a slice sized to complete
+ * comfortably, advances through the universe on a daily cycle, and merges each
+ * slice into the stored snapshot.
+ */
+const DEFAULT_BATCH_SIZE = 300;
+const MAX_BATCH_SIZE = 600;
+const DEFAULT_CONCURRENCY = 8;
+const MAX_CONCURRENCY = 12;
 
-function normalizeSymbol(raw: string): string {
-  return raw.toUpperCase().trim().replace(/\.NS$/i, '');
+/** Constant-time bearer check; length is compared first to keep timing flat. */
+function isAuthorised(request: NextRequest, secret: string): boolean {
+  const provided = Buffer.from(request.headers.get('authorization') ?? '');
+  const expected = Buffer.from(`Bearer ${secret}`);
+
+  if (provided.length !== expected.length) return false;
+  return timingSafeEqual(provided, expected);
 }
 
-function parseNumberParam(value: string | null): number | null {
-  if (!value) return null;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+/**
+ * Which slice this run covers. Derived from the calendar day so successive runs
+ * walk forward with no stored state and the schedule stays a single cron entry.
+ */
+function sliceOffset(batchSize: number): number {
+  const dayIndex = Math.floor(Date.now() / 86_400_000);
+  return (dayIndex * batchSize) % COVERED_SYMBOLS.length;
 }
 
-async function loadSymbols(): Promise<string[]> {
-  const filePath = path.join(process.cwd(), 'data', 'stocks.json');
-  const raw = await readFile(filePath, 'utf-8');
-  const parsed = JSON.parse(raw) as StockEntry[];
-
-  const symbols = new Set<string>();
-  for (const entry of parsed) {
-    if (!entry.symbol) continue;
-    symbols.add(normalizeSymbol(entry.symbol));
-  }
-
-  return Array.from(symbols);
+/** The snapshot stores the quote itself; freshness is stamped when it is read. */
+function withoutFreshness(price: StockPrice): StoredQuote {
+  return {
+    symbol: price.symbol,
+    price: price.price,
+    change: price.change,
+    changePercent: price.changePercent,
+    volume: price.volume,
+    previousClose: price.previousClose,
+    dayOpen: price.dayOpen,
+    dayHigh: price.dayHigh,
+    dayLow: price.dayLow,
+    fiftyTwoWeekHigh: price.fiftyTwoWeekHigh,
+    fiftyTwoWeekLow: price.fiftyTwoWeekLow,
+    quotedAt: price.quotedAt,
+    fetchedAt: price.fetchedAt,
+    exchangeTimezone: price.exchangeTimezone,
+  };
 }
 
-async function runWithConcurrency<T, R>(
-  items: T[],
-  limit: number,
-  worker: (item: T, index: number) => Promise<R>
-): Promise<R[]> {
-  const results: R[] = new Array(items.length);
+async function runBatch(symbols: string[], concurrency: number): Promise<StoredQuote[]> {
+  const captured: StoredQuote[] = [];
   let nextIndex = 0;
 
-  const runners = Array.from({ length: limit }, async () => {
+  const runners = Array.from({ length: Math.min(concurrency, symbols.length) }, async () => {
     while (true) {
       const index = nextIndex;
       nextIndex += 1;
-      if (index >= items.length) return;
-      results[index] = await worker(items[index], index);
+      if (index >= symbols.length) return;
+
+      const symbol = symbols[index];
+      try {
+        const { price } = await fetchNSEQuote(symbol, { allowFallbacks: false });
+        if (price) captured.push(withoutFreshness(price));
+      } catch (error) {
+        console.warn(
+          `[cron] ${symbol}:`,
+          error instanceof Error ? error.message : 'unknown error'
+        );
+      }
     }
   });
 
   await Promise.all(runners);
-  return results;
+  return captured;
 }
 
 export async function GET(request: NextRequest) {
-  const start = Date.now();
+  const secret = process.env.CRON_SECRET;
 
-  // Default-deny: only allow Vercel's trusted cron header, or a valid
-  // bearer token when CRON_SECRET is configured. Never allow unauthenticated
-  // invocations — this endpoint fans out to thousands of upstream requests.
-  const vercelCron = request.headers.get('x-vercel-cron') === '1';
-  const cronSecret = process.env.CRON_SECRET;
-  if (!vercelCron) {
-    const authHeader = request.headers.get('authorization');
-    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
+  // Fail closed. An unset secret must never mean "open to the internet".
+  if (!secret) {
+    return failure(
+      503,
+      'The price snapshot job is disabled because CRON_SECRET is not configured.',
+      'CRON_NOT_CONFIGURED'
+    );
+  }
+
+  if (!isAuthorised(request, secret)) {
+    return failure(401, 'Unauthorized', 'UNAUTHORIZED');
+  }
+
+  if (!isRedisConfigured()) {
+    return failure(
+      503,
+      'The price snapshot job needs Redis. Set KV_REDIS_URL to enable it.',
+      'REDIS_NOT_CONFIGURED'
+    );
   }
 
   try {
-    const searchParams = request.nextUrl.searchParams;
-    const limitParam = parseNumberParam(searchParams.get('limit'));
-    const envLimit = parseNumberParam(process.env.PRICE_SNAPSHOT_LIMIT ?? null);
-    const requestedLimit = limitParam ?? envLimit;
+    const params = request.nextUrl.searchParams;
+    const batchSize = boundedInt(params.get('limit'), DEFAULT_BATCH_SIZE, 1, MAX_BATCH_SIZE);
+    const concurrency = boundedInt(
+      params.get('concurrency'),
+      DEFAULT_CONCURRENCY,
+      1,
+      MAX_CONCURRENCY
+    );
 
-    const concurrencyParam = parseNumberParam(searchParams.get('concurrency'));
-    const envConcurrency = parseNumberParam(process.env.PRICE_SNAPSHOT_CONCURRENCY ?? null);
-    const concurrency = concurrencyParam ?? envConcurrency ?? DEFAULT_CONCURRENCY;
-
-    const symbols = await loadSymbols();
-    const targetSymbols = requestedLimit ? symbols.slice(0, requestedLimit) : symbols;
-
-    const results = await runWithConcurrency(targetSymbols, concurrency, async (symbol) => {
-      const { price } = await fetchNSEQuote(symbol, { allowSnapshot: false });
-      return { symbol, price } as QuoteResult;
-    });
-
-    const items: Record<string, StockPrice> = {};
-    const failures: string[] = [];
-
-    for (const result of results) {
-      if (result.price) {
-        const price = result.price;
-        items[result.symbol] = {
-          symbol: price.symbol,
-          price: price.price,
-          change: price.change,
-          changePercent: price.changePercent,
-          daily_change_percent: price.daily_change_percent,
-          volume: price.volume,
-          previousClose: price.previousClose,
-          timestamp: price.timestamp,
-        };
-      } else {
-        failures.push(result.symbol);
-      }
+    const offset = sliceOffset(batchSize);
+    const batch: string[] = [];
+    for (let index = 0; index < batchSize; index += 1) {
+      batch.push(COVERED_SYMBOLS[(offset + index) % COVERED_SYMBOLS.length]);
     }
 
-    const snapshot = {
-      updatedAt: new Date().toISOString(),
+    const captured = await runBatch(batch, concurrency);
+    const updatedAt = new Date().toISOString();
+
+    const existing = await getDailyPricesSnapshot().catch(() => null);
+    const items: Record<string, StoredQuote> = { ...(existing?.items ?? {}) };
+    for (const quote of captured) {
+      items[quote.symbol.replace(/\.NS$/i, '').toUpperCase()] = quote;
+    }
+
+    // Merge rather than overwrite, so one partial slice never erases the rest.
+    await setDailyPricesSnapshot({
+      updatedAt,
       source: 'Yahoo Finance close snapshot',
-      totalSymbols: targetSymbols.length,
-      succeeded: Object.keys(items).length,
-      failed: failures.length,
+      totalSymbols: Object.keys(items).length,
+      succeeded: captured.length,
+      failed: batch.length - captured.length,
       items,
-    };
-
-    const snapshotSizeBytes = Buffer.byteLength(JSON.stringify(snapshot), 'utf8');
-
-    await setDailyPricesSnapshot(snapshot);
+    });
 
     return NextResponse.json({
       success: true,
-      updatedAt: snapshot.updatedAt,
-      totalSymbols: snapshot.totalSymbols,
-      succeeded: snapshot.succeeded,
-      failed: snapshot.failed,
-      snapshotSizeBytes,
-      durationMs: Date.now() - start,
-      failuresSample: failures.slice(0, 20),
+      updatedAt,
+      covered: COVERED_SYMBOLS.length,
+      offset,
+      requested: batch.length,
+      captured: captured.length,
+      storedTotal: Object.keys(items).length,
     });
   } catch (error) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Snapshot update failed',
-        durationMs: Date.now() - start,
-      },
-      { status: 500 }
-    );
+    console.warn('[cron] snapshot failed:', error instanceof Error ? error.message : 'unknown');
+    return failure(500, 'The price snapshot job could not complete.', 'SNAPSHOT_FAILED');
   }
 }
