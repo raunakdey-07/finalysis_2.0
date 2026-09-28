@@ -1,121 +1,149 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { cn } from "@/lib/utils/cn";
 import type { EducationKey } from "@/lib/education";
 import { getMetricDefinition } from "@/lib/education";
 
-// Single global open key so only one popover is open at a time.
-let globalOpenKey: string | null = null;
-const listeners = new Set<() => void>();
+/**
+ * Only one explanation is open at a time, so opening a second closes the
+ * first. A module-level key plus a subscriber set is the smallest thing that
+ * does this without threading state through the card components.
+ */
+let openKey: string | null = null;
+const subscribers = new Set<() => void>();
 
-function setGlobalOpenKey(key: string | null) {
-  globalOpenKey = key;
-  listeners.forEach((fn) => fn());
+function setOpenKey(next: string | null): void {
+  openKey = next;
+  subscribers.forEach((notify) => notify());
 }
 
-function subscribe(listener: () => void) {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
-
-function useOpenState(localKey: string): [boolean, (open: boolean) => void] {
-  const [open, setOpen] = useState(globalOpenKey === localKey);
+function useExclusiveOpen(localKey: string): [boolean, (open: boolean) => void] {
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    const update = () => setOpen(globalOpenKey === localKey);
-    return subscribe(update);
+    const sync = () => setOpen(openKey === localKey);
+    sync();
+    subscribers.add(sync);
+    return () => {
+      subscribers.delete(sync);
+    };
   }, [localKey]);
 
-  const set = useCallback(
+  const toggle = useCallback(
     (next: boolean) => {
-      setGlobalOpenKey(next ? localKey : globalOpenKey === localKey ? null : globalOpenKey);
+      if (next) {
+        setOpenKey(localKey);
+      } else {
+        setOpenKey(null);
+      }
     },
     [localKey]
   );
 
-  return [open, set];
+  return [open, toggle];
 }
 
 type PopoverProps = {
   localKey: string;
   title: string;
-  content: React.ReactNode;
+  body: React.ReactNode;
   label: string;
   variant?: "inline" | "score";
   className?: string;
 };
 
-function InlinePopover({ localKey, title, content, label, variant = "inline", className }: PopoverProps) {
-  const [open, setOpen] = useOpenState(localKey);
+function ExplanationPopover({
+  localKey,
+  title,
+  body,
+  label,
+  variant = "inline",
+  className,
+}: PopoverProps) {
+  const [open, setOpen] = useExclusiveOpen(localKey);
   const wrapperRef = useRef<HTMLSpanElement>(null);
+  const panelRef = useRef<HTMLSpanElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelId = useId();
 
   useEffect(() => {
     if (!open) return;
-    const handle = (e: MouseEvent) => {
-      if (!wrapperRef.current?.contains(e.target as Node)) {
-        setOpen(false);
-      }
+
+    const onPointerDown = (event: MouseEvent) => {
+      if (!wrapperRef.current?.contains(event.target as Node)) setOpen(false);
     };
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setOpen(false);
+      // Send focus back to the control that opened it.
+      triggerRef.current?.focus();
     };
-    document.addEventListener("mousedown", handle);
-    document.addEventListener("keydown", handleKey);
+
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
     return () => {
-      document.removeEventListener("mousedown", handle);
-      document.removeEventListener("keydown", handleKey);
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
     };
   }, [open, setOpen]);
 
-  const handleEnter = () => {
-    if (typeof window !== "undefined" && window.matchMedia("(pointer: fine)").matches) {
-      setOpen(true);
-    }
-  };
-  const handleLeave = () => {
-    if (typeof window !== "undefined" && window.matchMedia("(pointer: fine)").matches) {
-      setOpen(false);
-    }
-  };
-  const handleClick = () => setOpen(!open);
-  const handleBlur = (e: React.FocusEvent) => {
-    if (!wrapperRef.current?.contains(e.relatedTarget as Node)) {
-      setOpen(false);
-    }
-  };
+  // The panel only exists while open, so focus has to move into it for a
+  // keyboard or screen-reader user to reach the explanation at all.
+  useEffect(() => {
+    if (open) panelRef.current?.focus();
+  }, [open]);
+
+  // Hover is a convenience on precise pointers only; touch and keyboard rely on
+  // the click, which keeps the target a dependable 24px.
+  const supportsHover = () =>
+    typeof window !== "undefined" && window.matchMedia("(pointer: fine)").matches;
+
+  const close = useCallback(() => setOpen(false), [setOpen]);
 
   return (
-    <span className={cn("relative inline-flex items-center align-top", className)} ref={wrapperRef} onBlur={handleBlur}>
+    <span className={cn("relative inline-flex items-start", className)} ref={wrapperRef}>
       <button
+        ref={triggerRef}
         type="button"
-        onMouseEnter={handleEnter}
-        onMouseLeave={handleLeave}
-        onClick={handleClick}
+        onMouseEnter={() => supportsHover() && setOpen(true)}
+        onMouseLeave={() => supportsHover() && close()}
+        onClick={() => setOpen(!open)}
+        onBlur={(event) => {
+          if (!wrapperRef.current?.contains(event.relatedTarget as Node)) close();
+        }}
         aria-expanded={open}
+        aria-controls={panelId}
         aria-label={label}
-        className={`inline-flex items-center justify-center rounded-full leading-none text-stone-400 outline-none transition hover:text-stone-700 focus-visible:ring-2 focus-visible:ring-stone-500 ${
-          variant === "score" ? "ml-1 h-5 w-5 text-xs" : "ml-1.5 h-4 w-4 text-[10px]"
-        }`}
+        className={cn(
+          "inline-flex shrink-0 items-center justify-center rounded-full text-stone-500",
+          "outline-none transition hover:text-stone-800",
+          "focus-visible:ring-2 focus-visible:ring-stone-700 focus-visible:ring-offset-2",
+          variant === "score" ? "h-6 w-6 text-xs" : "-ml-1 h-6 w-6 text-[11px]"
+        )}
       >
-        ?
+        <span aria-hidden="true">?</span>
       </button>
-      {open && (
-        <div
-          role="region"
-          aria-label={label}
-          className={`absolute z-30 w-[min(18rem,calc(100vw-2rem))] max-w-[18rem] rounded-md border border-stone-200 bg-white p-3 text-xs leading-relaxed text-stone-600 shadow-md ${
-            variant === "score" ? "right-0 top-full mt-2" : "right-0 top-full mt-1"
-          }`}
-          onMouseEnter={handleEnter}
-          onMouseLeave={handleLeave}
+
+      {open ? (
+        <span
+          ref={panelRef}
+          id={panelId}
+          role="dialog"
+          aria-label={title}
+          tabIndex={-1}
+          className={cn(
+            "absolute left-1/2 top-full z-30 mt-1 w-[min(20rem,calc(100vw-2rem))] -translate-x-1/2",
+            "rounded-md border border-stone-300 bg-white p-3 text-xs leading-relaxed",
+            "text-stone-700 shadow-md outline-none"
+          )}
+          onMouseEnter={() => supportsHover() && setOpen(true)}
+          onMouseLeave={() => supportsHover() && close()}
         >
-          <p className="mb-1.5 font-medium text-stone-800">{title}</p>
-          {content}
-        </div>
-      )}
+          <span className="mb-1.5 block font-semibold text-stone-900">{title}</span>
+          {body}
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -126,56 +154,67 @@ type MetricExplanationProps = {
   className?: string;
 };
 
-export function MetricExplanation({ metric, label: labelProp, className }: MetricExplanationProps) {
+export function MetricExplanation({ metric, label, className }: MetricExplanationProps) {
   const definition = getMetricDefinition(metric);
   if (!definition) return null;
 
-  const label = labelProp ?? `Explain ${definition.name}`;
-
   return (
-    <InlinePopover
+    <ExplanationPopover
       localKey={`metric-${metric}`}
-      label={label}
+      label={label ?? `What ${definition.name} means`}
       title={definition.name}
       className={className}
-      content={
-        <div className="space-y-1.5">
-          <p>{definition.shortDescription}</p>
-          <p><span className="font-medium text-stone-700">Why it matters:</span> {definition.whyItMatters}</p>
-          <p><span className="font-medium text-stone-700">How to read it:</span> {definition.interpretation}</p>
-          {definition.caveat ? <p><span className="font-medium text-stone-700">Keep in mind:</span> {definition.caveat}</p> : null}
-        </div>
+      body={
+        <>
+          <span className="block">{definition.shortDescription}</span>
+          <span className="mt-1.5 block">
+            <span className="font-medium text-stone-800">Why look at it: </span>
+            {definition.whyItMatters}
+          </span>
+          <span className="mt-1.5 block">
+            <span className="font-medium text-stone-800">How to read it: </span>
+            {definition.interpretation}
+          </span>
+          {definition.caveat ? (
+            <span className="mt-1.5 block">
+              <span className="font-medium text-stone-800">What it does not tell you: </span>
+              {definition.caveat}
+            </span>
+          ) : null}
+        </>
       }
     />
   );
 }
 
 type ScoreExplanationProps = {
-  score: number;
-  metric: "businessQuality" | "valuation" | "screeningScore";
+  metric: EducationKey;
   label?: string;
   className?: string;
 };
 
-export function ScoreExplanation({ score, metric, label: labelProp, className }: ScoreExplanationProps) {
+export function ScoreExplanation({ metric, label, className }: ScoreExplanationProps) {
   const definition = getMetricDefinition(metric);
   if (!definition) return null;
 
-  const label = labelProp ?? `Explain ${definition.name} score`;
-
   return (
-    <InlinePopover
+    <ExplanationPopover
       localKey={`score-${metric}`}
-      label={label}
+      label={label ?? `How the ${definition.name} score works`}
       title={definition.name}
       variant="score"
       className={className}
-      content={
-        <div className="space-y-1.5">
-          <p><span className="font-medium text-stone-800">{Math.round(score)} / 100.</span> {definition.interpretation}</p>
-          {definition.caveat ? <p>{definition.caveat}</p> : null}
-          <p className="text-stone-400">Algorithmic model output for educational comparison only.</p>
-        </div>
+      body={
+        <>
+          <span className="block">{definition.shortDescription}</span>
+          <span className="mt-1.5 block">{definition.interpretation}</span>
+          {definition.caveat ? (
+            <span className="mt-1.5 block">
+              <span className="font-medium text-stone-800">What it does not tell you: </span>
+              {definition.caveat}
+            </span>
+          ) : null}
+        </>
       }
     />
   );

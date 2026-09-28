@@ -1,155 +1,146 @@
 "use client";
 
 import type { NewsItem, Provenance } from "@/types";
+import { formatExchangeDateTime, formatRelativeTime } from "@/lib/format";
+import { getNewsCoverageMessage } from "@/lib/education";
+import { MetricExplanation } from "@/components/ui/metric-explanation";
 
-const SENTIMENT_DOT: Record<"positive" | "neutral" | "negative", string> = {
-  positive: "bg-teal-500",
-  neutral: "bg-slate-400",
-  negative: "bg-amber-400",
+type ToneReading = {
+  tone: "positive" | "negative" | "neutral" | "unknown";
+  articleCount: number;
+  note: string;
 };
 
-function relativeTime(date: Date): string {
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-
-  if (diffMins < 1) return "Just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays === 1) return "Yesterday";
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return date.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
-}
-
-function NewsSkeleton() {
+function ArticleList({ items }: { items: NewsItem[] }) {
   return (
-    <div className="space-y-3">
-      {[1, 2, 3, 4, 5].map((i) => (
-        <div key={i} className="flex items-start gap-4 py-3">
-          <div className="mt-2 h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-stone-200" />
-          <div className="min-w-0 flex-1">
-            <div className="h-4 w-full animate-pulse rounded bg-stone-200" />
-            <div className="mt-2 h-3 w-32 animate-pulse rounded bg-stone-200" />
-          </div>
-        </div>
+    <ul className="divide-y divide-stone-100">
+      {items.map((item) => (
+        <li key={item.id}>
+          <a
+            href={item.link}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="group flex flex-col gap-1 py-3 first:pt-0 last:pb-0"
+          >
+            <span className="text-sm leading-relaxed text-stone-800 group-hover:underline">
+              {item.title}
+            </span>
+            <span className="text-xs text-stone-500">
+              {item.source}
+              <span aria-hidden="true"> · </span>
+              <time dateTime={item.pubDate}>
+                {formatRelativeTime(item.pubDate)}
+                <span className="sr-only">, published {formatExchangeDateTime(item.pubDate)}</span>
+              </time>
+            </span>
+          </a>
+        </li>
       ))}
-    </div>
+    </ul>
   );
 }
 
-type NewsSectionProps = {
-  activeView: "research" | "live";
-  loadingResearchNews: boolean;
-  loadingLiveNews: boolean;
-  liveNewsReady: boolean;
-  researchNews: NewsItem[];
-  liveNews: NewsItem[];
-  researchNewsProv: Provenance | null;
-  liveNewsProv: Provenance | null;
-  onViewChangeAction: (view: "research" | "live") => void;
-};
-
-export default function NewsSection({
-  activeView,
-  loadingResearchNews,
-  loadingLiveNews,
-  liveNewsReady,
-  researchNews,
-  liveNews,
-  researchNewsProv,
-  liveNewsProv,
-  onViewChangeAction,
-}: NewsSectionProps) {
-  const activeNews = activeView === "research" ? researchNews : liveNews;
-  const isResearchView = activeView === "research";
-  const liveButtonDisabled = !liveNewsReady;
-  const isLiveLoading = activeView === "live" && loadingLiveNews && !liveNewsReady;
-  const activeProvenance = activeView === "research" ? researchNewsProv : liveNewsProv;
+/**
+ * Recent coverage, with the honesty rules attached.
+ *
+ * Articles and fallback links are never mixed in one list. Links appear only
+ * when no article was retrieved, under a heading that says exactly that, and
+ * they carry no publication date because they are not articles.
+ */
+export function NewsSection({
+  items,
+  tone,
+  provenance,
+  loading,
+}: {
+  items: NewsItem[];
+  tone: ToneReading | null;
+  provenance: Provenance | null;
+  loading: boolean;
+}) {
+  const articles = items.filter((item) => !item.synthetic);
+  const links = items.filter((item) => item.synthetic);
 
   return (
-    <section className="mb-12">
+    <section aria-labelledby="coverage-heading" className="mb-12">
       <div className="mb-4 flex items-center gap-4">
-        <div className="h-px flex-1 bg-stone-200" />
-        <span className="text-xs font-medium uppercase tracking-widest text-stone-500">Recent Coverage</span>
-        <div className="h-px flex-1 bg-stone-200" />
+        <div className="h-px flex-1 bg-stone-200" aria-hidden="true" />
+        <h2
+          id="coverage-heading"
+          className="text-xs font-medium uppercase tracking-widest text-stone-500"
+        >
+          Recent coverage
+        </h2>
+        <div className="h-px flex-1 bg-stone-200" aria-hidden="true" />
       </div>
 
-      <div className="rounded-xl bg-white p-5 shadow-sm">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <div className="inline-flex rounded-lg border border-stone-200 bg-stone-50 p-1">
-            <button
-              type="button"
-              onClick={() => onViewChangeAction("research")}
-              className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
-                isResearchView ? "bg-white text-stone-900 shadow-sm" : "text-stone-500 hover:text-stone-800"
-              }`}
-            >
-              Quick research
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (liveNewsReady) {
-                  onViewChangeAction("live");
-                }
-              }}
-              disabled={liveButtonDisabled}
-              className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
-                liveButtonDisabled
-                  ? "cursor-not-allowed bg-stone-100 text-stone-400 opacity-70"
-                  : !isResearchView
-                    ? "bg-white text-stone-900 shadow-sm"
-                    : "text-stone-500 hover:text-stone-800"
-              }`}
-            >
-              News sentiment
-            </button>
-          </div>
-        </div>
-
-        {isResearchView && loadingResearchNews && activeNews.length === 0 ? (
-          <NewsSkeleton />
-        ) : activeNews.length === 0 ? (
-          <p className="py-6 text-center text-sm text-stone-500">
-            {isResearchView ? "No research links available right now." : "No live coverage found right now."}
+      <div className="bg-white p-5 shadow-sm">
+        {loading ? (
+          <p className="py-4 text-sm text-stone-500" role="status">
+            Looking for recent coverage…
           </p>
-        ) : (
-          <div className="relative">
-            {isLiveLoading ? (
-              <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-white/50">
-                <p className="text-xs font-medium uppercase tracking-widest text-stone-500">Loading live articles</p>
+        ) : null}
+
+        {!loading && articles.length > 0 ? (
+          <>
+            <div className="mb-4 border-l-2 border-stone-200 pl-3">
+              <p className="flex items-center text-xs text-stone-600">
+                <MetricExplanation metric="recentSignals" />
+                {tone?.tone === "unknown"
+                  ? "No news tone is reported."
+                  : `Headline tone reads ${tone?.tone}.`}
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-stone-600">
+                {getNewsCoverageMessage(articles.length, tone?.tone !== "unknown")}
+              </p>
+            </div>
+            <ArticleList items={articles} />
+            <p className="mt-4 border-t border-stone-100 pt-3 text-xs text-stone-500">
+              Headlines retrieved from {provenance?.source ?? "Google News RSS"}
+              {provenance?.lastUpdated
+                ? `, refreshed ${formatExchangeDateTime(provenance.lastUpdated)}`
+                : ""}
+              . Headlines are written by newsrooms, not by Finalysis, and describe what was
+              reported rather than what is true.
+            </p>
+          </>
+        ) : null}
+
+        {!loading && articles.length === 0 ? (
+          <div>
+            <p className="py-2 text-sm leading-relaxed text-stone-700">
+              {getNewsCoverageMessage(0, false)}
+            </p>
+            {links.length > 0 ? (
+              <div className="mt-4 border-t border-stone-100 pt-4">
+                <h3 className="text-xs font-medium uppercase tracking-wider text-stone-500">
+                  Where to look instead
+                </h3>
+                <p className="mt-1 text-xs leading-relaxed text-stone-600">
+                  No articles were retrieved, so these are direct links to primary sources. They are
+                  not news, and Finalysis has not read them.
+                </p>
+                <ul className="mt-3 divide-y divide-stone-100">
+                  {links.map((link) => (
+                    <li key={link.id}>
+                      <a
+                        href={link.link}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="group flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2.5"
+                      >
+                        <span className="text-sm text-stone-800 group-hover:underline">
+                          {link.title}
+                        </span>
+                        <span className="text-xs text-stone-500">{link.source}</span>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
               </div>
             ) : null}
-            <div className={`divide-y divide-stone-100 ${isLiveLoading ? "pointer-events-none select-none opacity-75" : ""}`}>
-              {activeNews.slice(0, 5).map((item) => {
-                const sentiment = item.sentiment ?? "neutral";
-                return (
-                  <a
-                    key={item.id}
-                    href={item.link}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="group flex items-start gap-4 py-3 first:pt-0 last:pb-0"
-                  >
-                    <span className={`mt-2 h-1.5 w-1.5 shrink-0 rounded-full ${SENTIMENT_DOT[sentiment]}`} />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm leading-relaxed text-stone-700 group-hover:text-stone-900">{item.title}</p>
-                      <p className="mt-1 text-xs text-stone-500">
-                        <span className="font-medium">{item.source}</span> · {relativeTime(new Date(item.pubDate))}
-                      </p>
-                    </div>
-                  </a>
-                );
-              })}
-            </div>
           </div>
-        )}
-
-        <p className="mt-3 text-center text-xs text-stone-500">
-          News aggregated from {activeProvenance?.source ?? "Google News RSS"} for sentiment analysis
-        </p>
+        ) : null}
       </div>
     </section>
   );
