@@ -1,94 +1,87 @@
-import { Provenance, StockPrice } from '@/types';
+import { ConfidenceLevel, Provenance, StockPrice } from '@/types';
 import cache from '@/lib/cache';
-import { getDailyPricesSnapshot } from '@/lib/nse/daily-prices';
-import { fetchYahooQuote, searchYahooSymbols } from '@/lib/yahoo';
-const QUOTE_TTL_MS = 10 * 60 * 1000; // 10 min live-cache TTL
-const SEARCH_TTL_MS = 10 * 60 * 1000;
+import { describeOutage, logDetail } from '@/lib/errors';
+import { getDailyPricesSnapshot, MAX_SNAPSHOT_AGE_MS, StoredQuote } from '@/lib/nse/daily-prices';
+import { fetchYahooQuote } from '@/lib/yahoo';
+
+const QUOTE_TTL_MS = 10 * 60 * 1000;
 const CIRCUIT_BREAKER_THRESHOLD = 4;
 const CIRCUIT_BREAKER_COOLDOWN_MS = 60 * 1000;
+const RETRY_DELAYS_MS = [400, 800];
 
-const normalizeSymbol = (value: string) => value.toUpperCase().trim().replace(/\.NS$/i, '');
+type CircuitState = { failures: number; openedAt: number | null; state: 'closed' | 'open' };
 
-type CircuitState = {
-  failures: number;
-  openedAt: number | null;
-  state: 'closed' | 'open';
-};
+const circuit: CircuitState = { failures: 0, openedAt: null, state: 'closed' };
 
-const circuit: Record<'quote' | 'search', CircuitState> = {
-  quote: { failures: 0, openedAt: null, state: 'closed' },
-  search: { failures: 0, openedAt: null, state: 'closed' },
-};
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+/** Canonical form of an NSE ticker, used for every cache key and provider call. */
+export function normalizeSymbol(symbol: string): string {
+  return symbol.trim().toUpperCase().replace(/\.NS$/i, '');
+}
 
+const quoteCacheKey = (symbol: string) => `quote_v2_${normalizeSymbol(symbol)}`;
 
-function canRequest(key: keyof typeof circuit) {
-  const c = circuit[key];
-  if (c.state === 'closed') return true;
-  if (c.openedAt && Date.now() - c.openedAt > CIRCUIT_BREAKER_COOLDOWN_MS) {
-    c.state = 'closed';
-    c.failures = 0;
-    c.openedAt = null;
+function canRequest(): boolean {
+  if (circuit.state === 'closed') return true;
+  if (circuit.openedAt && Date.now() - circuit.openedAt > CIRCUIT_BREAKER_COOLDOWN_MS) {
+    circuit.failures = 0;
+    circuit.openedAt = null;
+    circuit.state = 'closed';
     return true;
   }
   return false;
 }
 
-function recordFailure(key: keyof typeof circuit) {
-  const c = circuit[key];
-  c.failures += 1;
-  if (c.failures >= CIRCUIT_BREAKER_THRESHOLD) {
-    c.state = 'open';
-    c.openedAt = Date.now();
+function recordFailure(): void {
+  circuit.failures += 1;
+  if (circuit.failures >= CIRCUIT_BREAKER_THRESHOLD) {
+    circuit.state = 'open';
+    circuit.openedAt = Date.now();
   }
 }
 
-function recordSuccess(key: keyof typeof circuit) {
-  const c = circuit[key];
-  c.failures = 0;
-  c.state = 'closed';
-  c.openedAt = null;
+function recordSuccess(): void {
+  circuit.failures = 0;
+  circuit.openedAt = null;
+  circuit.state = 'closed';
 }
 
-async function withRetries<T>(service: keyof typeof circuit, fn: () => Promise<T>): Promise<T> {
-  if (!canRequest(service)) {
-    throw new Error('circuit-open');
-  }
+async function withRetries<T>(fn: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
 
-  let lastErr: unknown;
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt += 1) {
     try {
       const result = await fn();
-      recordSuccess(service);
+      recordSuccess();
       return result;
-    } catch (err) {
-      lastErr = err;
-      if (attempt < 2) {
-        await delay(Math.pow(2, attempt) * 500); // 0.5s, 1s
-      }
+    } catch (error) {
+      lastError = error;
+      const delay = RETRY_DELAYS_MS[attempt];
+      if (delay !== undefined) await sleep(delay);
     }
   }
 
-  recordFailure(service);
-  throw lastErr instanceof Error ? lastErr : new Error('request-failed');
+  recordFailure();
+  throw lastError instanceof Error ? lastError : new Error('Price provider request failed');
 }
 
 function buildProvenance(params: {
   source: string;
-  ttlLabel: string;
+  cacheTTL: string;
   cacheHit: boolean;
-  lastUpdated: Date;
-  confidence: Provenance['confidenceLevel'];
+  /** Timestamp of the underlying data, never of this response. */
+  lastUpdated: string | null;
+  confidenceLevel: ConfidenceLevel;
   warnings?: string[];
 }): Provenance {
   return {
     source: params.source,
-    cacheTTL: params.ttlLabel,
+    cacheTTL: params.cacheTTL,
     cacheHit: params.cacheHit,
-    lastUpdated: params.lastUpdated.toISOString(),
-    confidenceLevel: params.confidence,
-    warnings: params.warnings,
+    lastUpdated: params.lastUpdated,
+    confidenceLevel: params.confidenceLevel,
+    warnings: params.warnings?.length ? params.warnings : undefined,
   };
 }
 
@@ -97,197 +90,148 @@ export interface QuoteResult {
   provenance: Provenance;
 }
 
+function toPrice(quote: StoredQuote, freshness: StockPrice['freshness']): StockPrice {
+  return { ...quote, freshness };
+}
+
+function ageOf(isoTimestamp: string | null): number | null {
+  if (!isoTimestamp) return null;
+  const parsed = Date.parse(isoTimestamp);
+  return Number.isNaN(parsed) ? null : Date.now() - parsed;
+}
+
 export type QuoteFetchOptions = {
-  allowSnapshot?: boolean;
+  /** Set false for the snapshot job, which must record live prices only. */
+  allowFallbacks?: boolean;
 };
 
-export async function fetchNSEQuote(symbol: string, options: QuoteFetchOptions = {}): Promise<QuoteResult> {
-  const allowSnapshot = options.allowSnapshot !== false;
-  const cacheKey = `nse_quote_${symbol}`;
+/**
+ * Resolve a price for `symbol`, and say honestly how it was obtained.
+ *
+ * Order of preference: a fresh cached quote, a live fetch, then whichever of
+ * the stale cache and the daily close is more recent. The result is always
+ * labelled with its own age so the UI can distinguish a live price from a
+ * cached one from an end-of-day close.
+ */
+export async function fetchNSEQuote(
+  symbol: string,
+  options: QuoteFetchOptions = {}
+): Promise<QuoteResult> {
+  const allowFallbacks = options.allowFallbacks !== false;
+  const normalized = normalizeSymbol(symbol);
+  const key = quoteCacheKey(normalized);
 
-  // Priority: live cache → live fetch → snapshot fallback → unavailable.
-  // The daily snapshot is end-of-day data only and must not override
-  // a live source during market hours.
-
-  const cached = cache.getEntry<StockPrice>(cacheKey);
+  const cached = cache.getEntry<StoredQuote>(key);
   if (cached) {
+    const ageMs = Date.now() - new Date(cached.timestamp).getTime();
     return {
-      price: cached.data,
+      price: toPrice(cached.data, { kind: 'cached', ageMs }),
       provenance: buildProvenance({
-        source: 'Yahoo Finance API',
-        ttlLabel: '10m',
+        source: 'Yahoo Finance',
+        cacheTTL: '10m',
         cacheHit: true,
-        lastUpdated: new Date(cached.timestamp),
-        confidence: 'high',
+        lastUpdated: cached.data.quotedAt ?? cached.data.fetchedAt,
+        confidenceLevel: ageMs > 5 * 60 * 1000 ? 'medium' : 'high',
       }),
     };
   }
 
+  let liveError: string | null = null;
+
   try {
-    const stockPrice = await withRetries('quote', async () => fetchYahooQuote(symbol));
-    cache.set(cacheKey, stockPrice, QUOTE_TTL_MS);
+    if (!canRequest()) {
+      throw new Error('Price provider is temporarily unavailable');
+    }
+
+    // Collapse a burst of concurrent misses into a single upstream request.
+    const quote = await cache.dedupe(key, () => withRetries(() => fetchYahooQuote(normalized)));
+    cache.set(key, quote, QUOTE_TTL_MS);
+
+    const ageMs = ageOf(quote.quotedAt);
+
     return {
-      price: stockPrice,
+      price: toPrice(quote, { kind: 'live', ageMs }),
       provenance: buildProvenance({
-        source: 'Yahoo Finance API',
-        ttlLabel: '10m',
+        source: 'Yahoo Finance',
+        cacheTTL: '10m',
         cacheHit: false,
-        lastUpdated: new Date(stockPrice.timestamp),
-        confidence: 'high',
+        lastUpdated: quote.quotedAt ?? quote.fetchedAt,
+        // A quote from a session the exchange has already closed is still a
+        // provider quote, but it is not a current price.
+        confidenceLevel: ageMs !== null && ageMs > 20 * 60 * 60 * 1000 ? 'medium' : 'high',
       }),
     };
   } catch (error) {
-    const upstreamError = error instanceof Error ? error.message : 'Unknown error';
+    console.warn(logDetail('price', error));
+    liveError = describeOutage('price', error);
+  }
 
-    // Live path failed — try daily snapshot as last resort.
-    if (allowSnapshot) {
-      try {
-        const snapshot = await getDailyPricesSnapshot();
-        if (snapshot && snapshot.items?.[symbol]) {
-          const snapshotPrice = snapshot.items[symbol];
-          const snapshotUpdatedAt = new Date(snapshot.updatedAt);
-          const snapshotAgeHours = (Date.now() - snapshotUpdatedAt.getTime()) / (1000 * 60 * 60);
-          if (Number.isFinite(snapshotAgeHours) && snapshotAgeHours <= 48) {
-            const normalizedPrice: StockPrice = {
-              ...snapshotPrice,
-              timestamp: snapshotPrice.timestamp instanceof Date
-                ? snapshotPrice.timestamp
-                : new Date(snapshotPrice.timestamp),
-            };
-            return {
-              price: normalizedPrice,
-              provenance: buildProvenance({
-                source: 'Daily close snapshot (Redis)',
-                ttlLabel: '1d',
-                cacheHit: true,
-                lastUpdated: new Date(snapshot.updatedAt),
-                confidence: 'medium',
-                warnings: [`Live fetch failed (${upstreamError}). Serving stale snapshot.`],
-              }),
-            };
-          }
-        }
-      } catch {
-        // Snapshot fetch also failed; fall through to unavailable.
-      }
-    }
-
-    // Try stale live cache one more time.
-    const stale = cache.getEntry<StockPrice>(cacheKey);
-    if (stale) {
-      return {
-        price: stale.data,
-        provenance: buildProvenance({
-          source: 'Yahoo Finance API',
-          ttlLabel: '10m',
-          cacheHit: true,
-          lastUpdated: new Date(stale.timestamp),
-          confidence: 'medium',
-          warnings: [`Live fetch failed (${upstreamError}). Serving stale cached price.`],
-        }),
-      };
-    }
-
+  if (!allowFallbacks) {
     return {
       price: null,
       provenance: buildProvenance({
-        source: 'Yahoo Finance API',
-        ttlLabel: '10m',
+        source: 'Yahoo Finance',
+        cacheTTL: '10m',
         cacheHit: false,
-        lastUpdated: new Date(),
-        confidence: 'derived',
-        warnings: [`Live fetch failed (${upstreamError}). No fallback available.`],
+        lastUpdated: null,
+        confidenceLevel: 'unavailable',
+        warnings: [liveError ?? 'Live pricing could not be retrieved.'],
       }),
     };
   }
-}
 
-export interface SearchResult {
-  symbols: string[];
-  provenance: Provenance;
-}
+  // Both fallbacks are old. Offer whichever is more recent rather than letting
+  // an arbitrary one win.
+  const stale = cache.getStale<StoredQuote>(key);
+  const snapshot = await getDailyPricesSnapshot().catch(() => null);
+  const snapshotAge = snapshot ? Date.now() - Date.parse(snapshot.updatedAt) : null;
+  const snapshotQuote =
+    snapshot && snapshotAge !== null && snapshotAge <= MAX_SNAPSHOT_AGE_MS
+      ? snapshot.items[normalized]
+      : undefined;
 
-export async function fetchMultipleQuotes(symbols: string[], concurrency: number = 4): Promise<QuoteResult[]> {
-  const results: QuoteResult[] = new Array(symbols.length);
-  let nextIndex = 0;
-
-  const runners = Array.from({ length: Math.min(concurrency, symbols.length) }, async () => {
-    while (true) {
-      const index = nextIndex;
-      nextIndex += 1;
-      if (index >= symbols.length) return;
-      results[index] = await fetchNSEQuote(symbols[index]);
-    }
-  });
-
-  await Promise.all(runners);
-  return results;
-}
-
-export async function searchStocks(query: string): Promise<SearchResult> {
-  const cacheKey = `nse_search_${query}`;
-  const cached = cache.getEntry<string[]>(cacheKey);
-
-  if (cached) {
+  if (stale && (!snapshotQuote || snapshotAge === null || stale.ageMs < snapshotAge)) {
     return {
-      symbols: cached.data,
+      price: toPrice(stale.data, { kind: 'stale-cache', ageMs: stale.ageMs }),
       provenance: buildProvenance({
-        source: 'Yahoo Finance search',
-        ttlLabel: '10m',
+        source: 'Yahoo Finance (cached)',
+        cacheTTL: '10m',
         cacheHit: true,
-        lastUpdated: new Date(cached.timestamp),
-        confidence: 'medium',
+        lastUpdated: stale.data.quotedAt ?? stale.data.fetchedAt,
+        confidenceLevel: 'low',
+        warnings: [`Live price unavailable (${liveError}). Showing the last price we retrieved.`],
       }),
     };
   }
 
-  try {
-    const symbols = await withRetries('search', async () => searchYahooSymbols(query));
-    const normalizedSymbols = symbols.map(normalizeSymbol).filter(Boolean);
-    cache.set(cacheKey, normalizedSymbols, SEARCH_TTL_MS);
-
+  if (snapshotQuote) {
+    const ageMs = snapshotAge ?? 0;
     return {
-      symbols: normalizedSymbols,
+      price: toPrice(snapshotQuote, { kind: 'daily-close', ageMs }),
       provenance: buildProvenance({
-        source: 'Yahoo Finance search',
-        ttlLabel: '10m',
-        cacheHit: false,
-        lastUpdated: new Date(),
-        confidence: 'medium',
-      }),
-    };
-  } catch (error) {
-    const warnings = [
-      'Search live fetch failed; serving stale cache if available.',
-      error instanceof Error ? error.message : 'Unknown error',
-    ];
-
-    // Re-fetch to avoid TS narrowing after early return
-    const stale = cache.getEntry<string[]>(cacheKey);
-    if (stale) {
-      return {
-        symbols: stale.data,
-        provenance: buildProvenance({
-          source: 'Yahoo Finance search',
-          ttlLabel: '10m',
-          cacheHit: true,
-          lastUpdated: new Date(stale.timestamp),
-          confidence: 'derived',
-          warnings,
-        }),
-      };
-    }
-
-    return {
-      symbols: [],
-      provenance: buildProvenance({
-        source: 'Yahoo Finance search',
-        ttlLabel: '10m',
-        cacheHit: false,
-        lastUpdated: new Date(),
-        confidence: 'derived',
-        warnings,
+        source: 'Daily close snapshot',
+        // Derived from the same constant the reader-facing window uses, so the
+        // number on the page cannot drift from the number the code enforces.
+        cacheTTL: `${Math.round(MAX_SNAPSHOT_AGE_MS / 86_400_000)}d`,
+        cacheHit: true,
+        lastUpdated: snapshot?.updatedAt ?? null,
+        confidenceLevel: 'low',
+        warnings: [
+          `Live price unavailable (${liveError}). Showing the most recent end-of-day close.`,
+        ],
       }),
     };
   }
+
+  return {
+    price: null,
+    provenance: buildProvenance({
+      source: 'Yahoo Finance',
+      cacheTTL: '10m',
+      cacheHit: false,
+      lastUpdated: null,
+      confidenceLevel: 'unavailable',
+      warnings: [liveError ?? 'Live pricing could not be retrieved.'],
+    }),
+  };
 }
