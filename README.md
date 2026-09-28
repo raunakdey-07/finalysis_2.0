@@ -1,148 +1,153 @@
-# Finalysis 2.0
+# Finalysis
 
-Finalysis is a zero-budget stock analysis app for Indian equities. It helps users quickly understand whether a company looks fundamentally strong, whether momentum is improving, and whether the current price appears reasonable.
+Read an NSE company from published numbers.
 
-Live: https://fin-alysis.vercel.app
+Finalysis pulls a share price with the timestamp the exchange recorded it, the
+valuation and return figures a public company page actually publishes, and
+recent headlines. It compares those figures against sector bands and says what
+it found. It is an educational research tool, not financial advice, and it does
+not recommend buying or selling anything.
 
-## What it does
+## What it shows
 
-For any NSE stock, Finalysis brings together:
+- **A price with a timestamp.** Every price says whether it is live, served
+  from a short cache, a scheduled end-of-day close, or the last price retrieved
+  while the live source was failing. A stale price is never dressed up as a
+  current one.
+- **Business quality and valuation scores.** Built from published P/E, P/B,
+  ROE, ROCE and dividend yield, compared against ranges for the company's
+  sector. A figure that was not published contributes nothing and is named as
+  missing. If nothing a score needs was published, no score is shown.
+- **Recent signals.** The day's move, and the tone of retrieved headlines.
+  No tone is reported at all when fewer than five articles matched.
+- **A data status panel.** Source, retrieval time, cache window, confidence,
+  and a plain explanation of anything that failed, with a retry.
 
-- fundamental screening (P/E, P/B, ROE, ROCE, dividend yield, EPS, book value, leverage)
-- price momentum and recent action
-- market/news sentiment for the stock and broader market
-- a clean, investor-friendly score and recommendation
+## What it does not do
 
-The app is designed to be simple and fast: one symbol, one overview, one verdict.
+- It does not estimate intrinsic value or a fair price.
+- It does not measure management quality, competitive advantage, or accounting
+  quality.
+- It does not measure growth. The company pages Finalysis reads publish one
+  figure at a time, and none of them is a growth series.
+- It does not give a recommendation, a target, or a probability of anything.
 
-## Core features
+## Coverage
 
-- Search and resolve NSE ticker symbols from natural language and user input
-- Local stock universe coverage for a large set of Indian equities
-- Yahoo Finance-backed live quote feed with cache and circuit-breaker protections
-- Daily snapshot fallback for stale/failed pricing scenarios
-- Screener.in fundamentals scraping with cache-aware resilience
-- Google News RSS and fallback sources for sentiment aggregation
-- Recommendation scoring with explainable metric breakdowns
-- Mobile-friendly UI built with Next.js and Tailwind
+Finalysis covers a fixed dataset of NSE tickers held in `data/stocks.json`
+(2,364 at the time of writing), not every listed company. Within that set,
+figures are available only for companies the source pages cover, so some
+symbols will return a price but no company figures. The page says which
+happened.
 
-## Stack
+## Sources
 
-- Framework: Next.js 16 (App Router)
-- Language: TypeScript
-- UI: React 19 + Tailwind CSS 4
-- Data sources: Yahoo Finance, Screener.in, Google News RSS, local NSE dataset
-- Runtime/cache: Redis for shared cache + in-memory local cache fallbacks
-- Testing: Vitest
+| Data | Source | Refresh |
+| --- | --- | --- |
+| Share price | Yahoo Finance chart API | 10 minutes, per instance |
+| Company figures | Screener.in public company page | 30 days, per instance |
+| Headlines | Google News RSS | 1 hour, per instance |
+| End-of-day close | Redis snapshot, written by a scheduled job | rotating slice, weekdays |
+| Ticker list | `data/stocks.json`, checked in | manual |
+
+Caching is per server instance, not shared. A cold instance always pays the
+full upstream cost.
 
 ## Local setup
 
-This project uses pnpm.
+Requires Node 20.11 or newer. This project uses pnpm.
 
 ```bash
-git clone https://github.com/raunakdey-07/finalysis_2.0.git
-cd finalysis_2.0
 pnpm install
+cp .env.example .env.local   # then fill it in
 pnpm dev
 ```
 
-Then open http://localhost:3000
+Open http://localhost:3000.
 
 ### Environment variables
 
-Create a `.env.local` with the site URL and any required secret values:
+Copy `.env.example` and set the values you need. Only the first is required.
 
-```bash
-NEXT_PUBLIC_SITE_URL=https://your-domain.com
-CRON_SECRET=your-very-long-secret
-```
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `CRON_SECRET` | For the snapshot job | Bearer token the job requires. If it is unset the job returns 503 rather than running open. |
+| `KV_REDIS_URL` | For the snapshot job | Redis used to store the end-of-day close snapshot. Without it, prices fall back to a cache-only policy. |
+| `NEXT_PUBLIC_SITE_URL` | Optional | Canonical URL used for metadata, robots and sitemap. Defaults to `https://finalysis.vercel.app`. |
 
-- `NEXT_PUBLIC_SITE_URL` is recommended for canonical URLs and SEO metadata.
-- `CRON_SECRET` protects the price snapshot cron endpoint when it is invoked manually.
+Vercel cron requests automatically send `CRON_SECRET` as an
+`Authorization: Bearer` header when that variable is set, so the scheduled job
+authenticates without any header a client could forge.
 
 ## Scripts
 
 ```bash
-pnpm dev
-pnpm build
-pnpm start
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm run stocks:sync
-pnpm run stocks:validate
+pnpm dev            # development server
+pnpm build          # production build
+pnpm start          # serve the production build
+pnpm lint           # eslint
+pnpm typecheck      # tsc --noEmit
+pnpm test           # vitest
+pnpm stocks:sync    # refresh data/stocks.json from NSE
+pnpm stocks:validate # validate the dataset
 ```
 
-## API surface
+## API
 
 | Endpoint | Purpose |
 | --- | --- |
-| `/api/nse/quote?symbol=ITC` | Live price for a symbol |
-| `/api/nse/search?q=hdfc` | Search and normalize ticker symbols |
-| `/api/metrics?symbol=ITC` | Fundamental and scoring data |
-| `/api/news?symbol=ITC` | News + sentiment mix |
-| `/api/overview?symbol=ITC` | Combined quote + metrics + news payload |
-| `/api/cron/update-prices` | Daily snapshot refresh endpoint |
+| `GET /api/metrics?symbol=RELIANCE` | Price, company figures, scores, verdict, provenance |
+| `GET /api/nse/quote?symbol=RELIANCE` | Price only |
+| `GET /api/nse/search?q=hdfc` | Ticker and company-name search, local dataset only |
+| `GET /api/news?symbol=RELIANCE` | Headlines and tone, or direct source links when none were retrieved |
+| `GET /api/cron/update-prices` | Refreshes a slice of the end-of-day snapshot. Requires `Authorization: Bearer $CRON_SECRET`. |
 
-Rate limits are enforced per client IP and endpoint category.
+Every route rate limits per client, and every route that takes a symbol
+rejects anything outside the covered dataset before making an upstream request.
 
-## Data and freshness model
+## How the scores work
 
-| Source | Purpose | Freshness |
-| --- | --- | --- |
-| Yahoo Finance | Live quote and search data | 10-minute cache |
-| Daily NSE snapshot | End-of-day fallback / stale recovery | 1 day |
-| Screener.in | Valuation and fundamentals | 60-day cache |
-| Google News RSS | Market sentiment and headlines | 8-hour cache |
-| `data/stocks.json` | Canonical Indian stock universe | source-controlled |
+Each score starts from a neutral 50 and adjusts it for published figures:
+
+- **Business quality**: ROE against the sector band, ROCE against the sector
+  band, and dividend yield.
+- **Valuation**: P/E and P/B against the sector bands.
+
+Sector bands come from the broad sector the source publishes. When the sector
+is missing, the general-market bands are used and the page says so.
+
+A published figure moves the score. A missing one does not. If no figure a
+score needs was published, the score is absent rather than 50, because a neutral
+score is indistinguishable from a real, unremarkable reading.
 
 ## Maintenance
-
-Refresh the stock dataset:
 
 ```bash
 pnpm run stocks:sync
 pnpm run stocks:validate
 ```
 
-The stock sync script refreshes the canonical stock list while preserving aliases and metadata where needed.
+The snapshot job walks a bounded slice of the universe each run and merges it
+into the stored snapshot, because a full sweep does not fit in a single
+serverless invocation. Configure it in `vercel.json`:
 
-## Cron job
-
-The daily snapshot route is available at:
-
-```text
-/api/cron/update-prices
+```json
+{ "crons": [{ "path": "/api/cron/update-prices", "schedule": "45 10 * * 1-5" }] }
 ```
 
-Manual calls should use a bearer token when `CRON_SECRET` is configured:
+## Known limitations
 
-```bash
-curl -H "Authorization: Bearer $CRON_SECRET" https://your-domain.com/api/cron/update-prices
-```
-
-Vercel cron jobs can call this route without the bearer header when the trusted Vercel cron header is present.
-
-## Quality checks
-
-Before shipping, run the same checks used in CI:
-
-```bash
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm run stocks:validate
-pnpm build
-```
-
-## Disclaimer
-
-This project is for educational and research use only. It does not provide financial advice. Market data may be delayed, incomplete, or inaccurate. Always verify against official sources before making investment decisions.
+- Headline tone is a keyword count, not an understanding of the article. It
+  needs at least five retrieved articles before it is reported at all.
+- Company figures are the latest completed financial year. They are not a
+  trailing twelve-month view and are not adjusted for later restatements.
+- Screener.in does not publish a debt-to-equity figure on the pages Finalysis
+  reads, so leverage is not shown and is not scored.
+- The cache is per instance, so upstream request volume scales with traffic.
+- The site is light-only. A dark palette was previously declared while every
+  surface was hard-coded light, which rendered a near-black page behind white
+  cards; the half-implementation was removed instead of shipping a broken mode.
 
 ## License
 
-MIT — see [LICENSE](LICENSE)
-
----
-
-Built by @raunakdey-07
+MIT, see [LICENSE](LICENSE).
