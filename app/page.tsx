@@ -564,7 +564,7 @@ export default function Page() {
             <section aria-labelledby="company-heading" className="mb-8">
               <h2
                 id="company-heading"
-                className="break-words text-2xl font-semibold tracking-tight text-stone-900 sm:text-3xl"
+                className="wrap-break-word text-2xl font-semibold tracking-tight text-stone-900 sm:text-3xl"
               >
                 {fundamentals?.companyName ?? toApiSymbol(symbol)}
               </h2>
