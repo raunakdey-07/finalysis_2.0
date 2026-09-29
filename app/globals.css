@@ -18,16 +18,21 @@
 @theme {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-plex), ui-sans-serif, system-ui, -apple-system, "Segoe UI",
-    "Helvetica Neue", Arial, sans-serif;
+  --font-sans: var(--font-plex), var(--font-plex-ext), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
+/*
+ * Both committed faces are listed, so the rupee sign and other accented
+ * characters resolve to the typeface rather than to whatever the system
+ * substitutes. The two faces are disjoint by unicode range.
+ */
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-plex), ui-sans-serif, system-ui, -apple-system, "Segoe UI",
-    "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--font-plex), var(--font-plex-ext), ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   letter-spacing: 0.01em;
   -webkit-font-smoothing: antialiased;
 }
