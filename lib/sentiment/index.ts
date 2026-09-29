@@ -96,6 +96,10 @@ function tagOf(xml: string, tag: string): string | null {
   return match ? match[1] : null;
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function attributeOf(xml: string, tag: string, attribute: string): string | null {
   const match = xml.match(new RegExp(`<${tag}[^>]*\\b${attribute}=["']([^"']*)["']`, 'i'));
   return match ? match[1] : null;
@@ -145,8 +149,13 @@ export function parseRssFeed(xml: string): ParsedArticle[] {
     const sourceTag = tagOf(item, 'source');
     const source = stripTags(sourceTag ?? '') || (sourceUrl ? new URL(sourceUrl).hostname : 'Unknown source');
 
+    // Google News repeats the publisher at the end of the headline, and the
+    // card prints the publisher again on the line below. Printing the same word
+    // twice on one row looks like a parsing fault.
+    const titleWithoutSource = title.replace(new RegExp(`\\s*[-–—]\\s*${escapeRegExp(source)}\\s*$`, 'i'), '');
+
     articles.push({
-      title,
+      title: titleWithoutSource || title,
       link: stripTags(link),
       source,
       pubDate: new Date(publishedAt).toISOString(),
@@ -266,18 +275,41 @@ function normalizeWords(value: string): string {
  *
  * Matching is token-based on purpose. A substring test made the ticker "LT"
  * match the "lt" inside "result", and "IDEA" match the English word "idea".
- * A bare ticker is accepted only alongside a market word, and the company name
- * is matched with its legal suffix removed so "Vodafone Idea" still matches
- * headlines that never write "Limited".
+ *
+ * A company can also have a single-word short name that is an ordinary English
+ * word. "Reliance" is a case in point: requiring only that the word appear put
+ * an article about Korean pop acts into a Reliance Industries feed, because
+ * "heavy reliance on" is idiomatic English. So a one-word name is accepted
+ * only when a market word sits directly beside it, the way a real headline
+ * reads. A multi-word company name is distinctive enough to stand alone.
+ *
+ * This deliberately favours precision over recall: an article about the company
+ * is occasionally dropped, but an article that is not about the company never
+ * appears, and a news panel is judged on what it wrongly shows.
  */
 export function matchesCompany(text: string, input: CompanyMatcherInput): boolean {
   const words = normalizeWords(text).split(' ').filter(Boolean);
   if (words.length === 0) return false;
 
-  const phraseMatches = (phrase: string) => {
+  const hasAdjacentMarketContext = (index: number): boolean => {
+    for (const offset of [-1, 1]) {
+      const neighbour = words[index + offset];
+      if (neighbour && MARKET_CONTEXT.has(neighbour)) return true;
+    }
+    return false;
+  };
+
+  const phraseMatches = (phrase: string): boolean => {
     const normalized = normalizeWords(phrase);
     if (normalized.length < 3) return false;
-    return ` ${words.join(' ')} `.includes(` ${normalized} `);
+
+    const parts = normalized.split(' ');
+    if (parts.length >= 2) {
+      return ` ${words.join(' ')} `.includes(` ${normalized} `);
+    }
+
+    const index = words.indexOf(parts[0]);
+    return index !== -1 && hasAdjacentMarketContext(index);
   };
 
   if (input.companyName) {
@@ -286,9 +318,13 @@ export function matchesCompany(text: string, input: CompanyMatcherInput): boolea
   }
   if ((input.aliases ?? []).some(phraseMatches)) return true;
 
+  // The ticker is a stronger signal than a name substring, so it gets first
+  // refusal, but it is still held to the same rule: a market word has to sit
+  // beside it, or the match is a coincidence of vocabulary.
   const ticker = input.symbol.replace(/\.NS$/i, '').toLowerCase();
   if (ticker.length < 2) return false;
-  return words.includes(ticker) && words.some((word) => MARKET_CONTEXT.has(word));
+  const tickerIndex = words.indexOf(ticker);
+  return tickerIndex !== -1 && hasAdjacentMarketContext(tickerIndex);
 }
 
 export type CompanyContext = CompanyMatcherInput | null;
@@ -370,12 +406,10 @@ export async function getNews(context: CompanyContext): Promise<CompanyNewsResul
         cacheHit: true,
         lastUpdated: cached.data.fetchedAt,
         confidenceLevel: 'medium',
-        // The warnings from the original fetch are re-emitted, so a partial
-        // result does not look complete to whoever reads the cache next.
-        warnings: [
-          'Served from a one-hour cache rather than a fresh lookup.',
-          ...cached.data.warnings,
-        ],
+        // Only the original fetch's failures are re-emitted. A cache hit is
+        // not a failure, and listing it under "what went wrong" turned normal
+        // operation into an error state.
+        warnings: cached.data.warnings,
       }),
     };
   }
