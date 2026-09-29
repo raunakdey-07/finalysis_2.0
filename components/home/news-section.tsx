@@ -52,11 +52,13 @@ export function NewsSection({
   tone,
   provenance,
   loading,
+  unknownSymbol,
 }: {
   items: NewsItem[];
   tone: ToneReading | null;
   provenance: Provenance | null;
   loading: boolean;
+  unknownSymbol: boolean;
 }) {
   const articles = items.filter((item) => !item.synthetic);
   const links = items.filter((item) => item.synthetic);
@@ -109,9 +111,11 @@ export function NewsSection({
         {!loading && articles.length === 0 ? (
           <div>
             <p className="py-2 text-sm leading-relaxed text-stone-700">
-              {getNewsCoverageMessage(0, false)}
+              {unknownSymbol
+                ? "No headlines were requested, because this ticker is outside the covered list."
+                : getNewsCoverageMessage(0, false)}
             </p>
-            {links.length > 0 ? (
+            {links.length > 0 && !unknownSymbol ? (
               <div className="mt-4 border-t border-stone-100 pt-4">
                 <h3 className="text-xs font-medium uppercase tracking-wider text-stone-500">
                   Where to look instead

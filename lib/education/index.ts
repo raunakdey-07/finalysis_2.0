@@ -154,13 +154,11 @@ export function getMetricDefinition(key: EducationKey): MetricDefinition | null 
 export function getConfidenceMessage(confidence: 'high' | 'medium' | 'low' | 'unavailable'): string {
   switch (confidence) {
     case 'high':
-      return 'This figure came straight from its source.';
+      return 'Both sources answered directly.';
     case 'medium':
-      return 'This figure came from a recent cache rather than a fresh lookup.';
-    case 'low':
-      return 'This figure is a fallback. The live source was unavailable when it was last checked.';
+      return 'At least one figure came from a held copy or a fallback.';
     default:
-      return 'This figure could not be retrieved at all.';
+      return 'At least one source could not be read at all.';
   }
 }
 
