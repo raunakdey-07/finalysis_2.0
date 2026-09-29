@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { boundedInt, failure, guardRateLimit, guardSymbol } from '@/lib/api';
 import { logDetail } from '@/lib/errors';
-import { buildResearchLinks, getNews, MAX_ARTICLES } from '@/lib/sentiment';
+import { getNews, MAX_ARTICLES } from '@/lib/sentiment';
+import { buildResearchLinks } from '@/lib/research-links';
 import { getSymbolEntry } from '@/lib/symbol-resolver';
 import type { ApiResponse, NewsItem } from '@/types';
 
@@ -40,9 +41,19 @@ export async function GET(request: NextRequest) {
 
     // Placeholder links are offered only when there is nothing real to show,
     // and they are always flagged so the page can label them as links.
-    const items: NewsItem[] = retrieved.length === 0
-      ? buildResearchLinks(context, Math.min(limit, 4))
-      : retrieved.slice(0, limit);
+    const items: NewsItem[] =
+      retrieved.length === 0 && symbol
+        ? buildResearchLinks(symbol, entry?.name ?? null)
+            .slice(0, 4)
+            .map((link) => ({
+              id: `link-${link.href}`,
+              title: link.label,
+              link: link.href,
+              pubDate: new Date().toISOString(),
+              source: link.source,
+              synthetic: true,
+            }))
+        : retrieved.slice(0, limit);
 
     const body: ApiResponse<NewsPayload> = {
       success: true,

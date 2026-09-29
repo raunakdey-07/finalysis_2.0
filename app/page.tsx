@@ -6,15 +6,17 @@ import type {
   ApiResponse,
   Provenance,
   StockFundamentals,
+  StockPrice,
   StockSearchSuggestion,
 } from "@/types";
 import type { MetricsPayload } from "@/app/api/metrics/route";
 import type { NewsPayload } from "@/app/api/news/route";
-import type { ScreeningVerdict } from "@/lib/metrics";
+import type { ScreeningVerdict, StockMetrics } from "@/lib/metrics";
 import { COVERED_SYMBOL_COUNT } from "@/lib/symbol-resolver";
 import { AnalysisCards } from "@/components/home/analysis-cards";
-import { DataNote } from "@/components/home/data-note";
+import { DataStatus } from "@/components/home/data-status";
 import { NewsSection } from "@/components/home/news-section";
+import { ResearchLinks } from "@/components/home/research-links";
 import { styleFor } from "@/components/home/score-style";
 import { DisclaimerGate, MethodologyDialog } from "@/components/disclaimer-modal";
 import { ScoreExplanation } from "@/components/ui/metric-explanation";
@@ -64,56 +66,120 @@ function toApiSymbol(symbol: string): string {
   return symbol.replace(/\.NS$/i, "");
 }
 
+const MODEL_NOTE =
+  "These bands are calibrated for Indian equities, so this is a screening tool rather than a substitute for reading filings or judging management.";
 /**
- * Suggested next steps, derived from the figures that are actually present.
+ * The reasoning behind the verdict, split into the three questions a reader
+ * actually has: what worries me, what argues the other way, and what I still
+ * need to check myself.
  *
- * A missing figure produces a prompt to go and check it, not a silent gap.
+ * Every line is derived from a published figure. A figure that is missing
+ * becomes a prompt to go and find it, never a silent gap and never a
+ * fabricated concern.
  */
-function buildNextChecks(
+function buildVerdictDetail(
   fundamentals: StockFundamentals | null,
-  verdict: ScreeningVerdict | null
-): string[] {
-  if (!fundamentals) return [];
+  metrics: StockMetrics | null,
+  verdict: ScreeningVerdict | null,
+  price: StockPrice | null
+): { concerns: string[]; strengths: string[]; nextChecks: string[] } {
+  const concerns: string[] = [];
+  const strengths: string[] = [];
+  const nextChecks: string[] = [];
 
-  const checks: string[] = [];
+  if (!fundamentals || !metrics) {
+    return { concerns, strengths, nextChecks };
+  }
 
-  if (fundamentals.bookValue !== null && fundamentals.bookValue < 0) {
-    checks.push(
-      "Net worth per share is negative. Look at the balance sheet and the debt schedule before reading anything into the price."
+  const { valuation, businessQuality, sectorProfile } = metrics;
+  const label = sectorProfile.label.toLowerCase();
+
+  if (valuation.score !== null && valuation.score < 45) {
+    concerns.push(
+      `Valuation sits on the weaker side of the ${label} bands.`
     );
+  }
+  if (businessQuality.score !== null && businessQuality.score < 45) {
+    concerns.push(`Returns on capital sit on the weaker side of the ${label} bands.`);
+  }
+  if (fundamentals.peRatio !== null && fundamentals.peRatio > sectorProfile.peHigh) {
+    concerns.push(
+      `P/E is ${fundamentals.peRatio.toFixed(1)}, well above the ${label} band of ${sectorProfile.peHigh}. Growth has to justify that.`
+    );
+  }
+  if (fundamentals.pbRatio !== null && fundamentals.pbRatio > sectorProfile.pbHigh) {
+    concerns.push(
+      `P/B is ${fundamentals.pbRatio.toFixed(2)}, above the ${label} band of ${sectorProfile.pbHigh}.`
+    );
+  }
+  if (fundamentals.bookValue !== null && fundamentals.bookValue < 0) {
+    concerns.push(
+      "Net worth per share is negative, so there is no book value to compare the price against."
+    );
+  }
+  if (fundamentals.eps !== null && fundamentals.eps < 0) {
+    concerns.push(
+      `The latest full year was loss-making, with EPS of ${fundamentals.eps.toFixed(2)}.`
+    );
+  }
+  if (price && price.fiftyTwoWeekLow !== null && price.price > 0) {
+    if (price.price <= price.fiftyTwoWeekLow * 1.02) {
+      concerns.push("The price is at or near its 52-week low.");
+    }
+  }
+
+  if (valuation.score !== null && valuation.score >= 65) {
+    strengths.push(`Valuation sits on the stronger side of the ${label} bands.`);
+  }
+  if (businessQuality.score !== null && businessQuality.score >= 65) {
+    strengths.push(`Returns on capital sit on the stronger side of the ${label} bands.`);
+  }
+  if (fundamentals.roe !== null && fundamentals.roe >= sectorProfile.roeStrong) {
+    strengths.push(
+      `ROE is ${fundamentals.roe.toFixed(1)}%, strong for ${label}.`
+    );
+  }
+  if (fundamentals.dividendYield !== null && fundamentals.dividendYield > 2) {
+    strengths.push(
+      `Dividend yield of ${fundamentals.dividendYield.toFixed(2)}% adds an income component.`
+    );
+  }
+  if (
+    fundamentals.peRatio !== null &&
+    fundamentals.peRatio > 0 &&
+    fundamentals.peRatio < sectorProfile.peLow
+  ) {
+    strengths.push(`P/E of ${fundamentals.peRatio.toFixed(1)} is below the ${label} band.`);
+  }
+  if (price && price.fiftyTwoWeekHigh !== null && price.price >= price.fiftyTwoWeekHigh * 0.98) {
+    strengths.push("The price is at or near its 52-week high.");
   }
 
   if (fundamentals.peRatio === null) {
-    checks.push(
+    nextChecks.push(
       "No P/E is shown. For a company not in profit, work from cash, debt and book value instead."
     );
-  } else if (fundamentals.peRatio > 40) {
-    checks.push(
-      `P/E is ${fundamentals.peRatio.toFixed(1)}, which is a high multiple. Check whether growth and returns justify it.`
-    );
   }
-
   if (fundamentals.roe === null) {
-    checks.push(
+    nextChecks.push(
       "No return on equity is shown. That usually means negative or very small net worth, or that it was not reported."
     );
   }
-
-  if (fundamentals.eps !== null && fundamentals.eps < 0) {
-    checks.push(
-      `The latest full year was loss-making (EPS ${fundamentals.eps.toFixed(2)}). Check whether it was a one-off or structural.`
-    );
+  if (fundamentals.bookValue !== null && fundamentals.bookValue < 0) {
+    nextChecks.push("Check the balance sheet and the debt schedule before reading anything into the price.");
   }
-
   if (verdict && verdict.coverage < 0.6) {
-    checks.push(
+    nextChecks.push(
       `Only ${Math.round(verdict.coverage * 100)}% of the figures this screen uses were published. Confirm the rest in the annual report.`
     );
   }
+  nextChecks.push("Read the latest annual report and compare the same figures against two or three peers.");
 
-  checks.push("Read the latest annual report and compare the same figures against two or three peers.");
-
-  return Array.from(new Set(checks)).slice(0, 3);
+  return {
+    concerns: concerns.slice(0, 3),
+    strengths: strengths.slice(0, 3),
+    nextChecks: Array.from(new Set(nextChecks)).slice(0, 3),
+  };
 }
 
 /**
@@ -193,8 +259,6 @@ export default function Page() {
   const [metricsProvenance, setMetricsProvenance] = useState<Provenance | null>(null);
   const [metricsErrorCode, setMetricsErrorCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [retrying, setRetrying] = useState(false);
-  const [attempt, setAttempt] = useState(0);
 
   const requestId = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
@@ -234,9 +298,27 @@ export default function Page() {
   }, [sectorOpen]);
 
   const load = useCallback(async (apiSymbol: string, signal: AbortSignal) => {
+    const metricsUrl = `/api/metrics?symbol=${encodeURIComponent(apiSymbol)}`;
+    const newsUrl = `/api/news?symbol=${encodeURIComponent(apiSymbol)}&limit=8`;
+
+    /**
+     * One automatic retry, without a control for the reader to press.
+     *
+     * Both upstreams sit behind a network, and a single dropped connection or
+     * a cold serverless instance should not decide what the page shows. A 404
+     * is an answer and is not retried; only a transport failure or a 5xx is.
+     */
+    const fetchOnce = async (url: string) => {
+      const response = await fetch(url, { signal });
+      if (response.status < 500) return response;
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      if (signal.aborted) return response;
+      return fetch(url, { signal });
+    };
+
     const [metricsResponse, newsResponse] = await Promise.allSettled([
-      fetch(`/api/metrics?symbol=${encodeURIComponent(apiSymbol)}`, { signal }),
-      fetch(`/api/news?symbol=${encodeURIComponent(apiSymbol)}&limit=8`, { signal }),
+      fetchOnce(metricsUrl),
+      fetchOnce(newsUrl),
     ]);
 
     if (metricsResponse.status === "fulfilled") {
@@ -276,7 +358,6 @@ export default function Page() {
     const id = ++requestId.current;
 
     setLoading(true);
-    setRetrying(false);
     setMetrics(null);
     setNews(null);
     setNewsProvenance(null);
@@ -290,7 +371,7 @@ export default function Page() {
       });
 
     return () => controller.abort();
-  }, [symbol, attempt, load, hydrated]);
+  }, [symbol, load, hydrated]);
 
   function selectSymbol(next: string) {
     const canonical = `${toApiSymbol(next).toUpperCase()}.NS`;
@@ -466,8 +547,8 @@ export default function Page() {
   const price = metrics?.quote ?? null;
   const fundamentals = metrics?.fundamentals ?? null;
   const verdict = metrics?.verdict ?? null;
-  // Cheap string work over two values, so it is derived rather than memoised.
-  const nextChecks = buildNextChecks(fundamentals, verdict);
+  // Cheap string work over three values, so it is derived rather than memoised.
+  const detail = buildVerdictDetail(fundamentals, metrics?.metrics ?? null, verdict, price);
 
   const verdictStyle = styleFor(
     verdict?.label === "insufficient-data" ? "unknown" : (verdict?.label ?? "unknown")
@@ -724,21 +805,24 @@ export default function Page() {
                   {[fundamentals.industry, fundamentals.sector].filter(Boolean).join(" · ")}
                 </p>
               ) : null}
-            </section>
 
-            <DataNote
-              price={price}
-              fundamentals={fundamentals}
-              quoteProvenance={metrics?.quoteProvenance ?? metricsProvenance}
-              fundamentalsProvenance={metrics?.fundamentalsProvenance ?? metricsProvenance}
-              warnings={Array.from(new Set(warnings))}
-              unknownSymbol={unknownSymbol}
-              retrying={retrying}
-              onRetry={() => {
-                setRetrying(true);
-                setAttempt((value) => value + 1);
-              }}
-            />
+              {/*
+                The freshness line sits under the price because that is the one
+                thing a reader has to know before trusting the number above it.
+                Everything else is behind its "?" so the page does not open with
+                a block of metadata.
+              */}
+              {!loading ? (
+                <DataStatus
+                  price={price}
+                  fundamentals={fundamentals}
+                  quoteProvenance={metrics?.quoteProvenance ?? metricsProvenance}
+                  fundamentalsProvenance={metrics?.fundamentalsProvenance ?? metricsProvenance}
+                  warnings={Array.from(new Set(warnings))}
+                  unknownSymbol={unknownSymbol}
+                />
+              ) : null}
+            </section>
 
             <section aria-labelledby="verdict-heading" className="mb-10">
               <h2
@@ -751,13 +835,13 @@ export default function Page() {
               </h2>
 
               {loading ? (
-                <div className="border-l-4 border-l-stone-200 bg-white p-6 shadow-sm">
+                <div className="mt-4 rounded-xl border-l-4 border-l-stone-200 bg-white p-6 shadow-sm">
                   <p className="text-sm text-stone-500" role="status">
                     Working out the screening picture…
                   </p>
                 </div>
               ) : nothingLoaded ? (
-                <div className="border-l-4 border-l-amber-700 bg-white p-6 shadow-sm">
+                <div className="mt-4 rounded-xl border-l-4 border-l-amber-700 bg-white p-6 shadow-sm">
                   <p className="text-lg font-semibold text-amber-900">
                     {unknownSymbol
                       ? `${toApiSymbol(symbol)} is not a company Finalysis covers`
@@ -770,31 +854,63 @@ export default function Page() {
                   </p>
                 </div>
               ) : verdict ? (
-                <div className={`border-l-4 bg-white p-6 shadow-sm ${verdictStyle.rule}`}>
-                  <p className="flex items-center gap-1.5">
-                    <span className={`text-xl font-semibold ${verdictStyle.text}`}>
+                <div className={`mt-4 rounded-xl border-l-4 bg-white p-6 shadow-sm ${verdictStyle.rule}`}>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span className={`text-2xl font-semibold ${verdictStyle.text}`}>
                       {verdict.headline}
                     </span>
                     <ScoreExplanation metric="screeningVerdict" />
-                  </p>
-                  <p className="mt-2 text-sm leading-relaxed text-stone-700">{verdict.summary}</p>
-                  <p className="mt-2 text-sm leading-relaxed text-stone-600">{verdict.basis}</p>
+                  </div>
+                  <p className="mt-2 text-sm leading-relaxed text-stone-600">{verdict.summary}</p>
+                  <p className="mt-3 text-xs text-stone-500">{verdict.basis}</p>
 
-                  {nextChecks.length > 0 ? (
-                    <div className="mt-5 border-t border-stone-100 pt-4">
-                      <h3 className="text-sm font-medium text-stone-700">What to check next</h3>
-                      <ul className="mt-2 space-y-2">
-                        {nextChecks.map((check) => (
-                          <li key={check} className="text-sm leading-relaxed text-stone-600">
-                            {check}
-                          </li>
-                        ))}
-                      </ul>
+                  <details className="mt-4 rounded-lg border border-stone-200 bg-stone-50 px-4 py-3">
+                    <summary className="cursor-pointer text-sm font-medium text-stone-700">
+                      Why this verdict?
+                    </summary>
+
+                    <div className="mt-3 space-y-3 text-sm text-stone-600">
+                      <div>
+                        <p className="mb-1 font-medium text-stone-700">Key concerns</p>
+                        {detail.concerns.length > 0 ? (
+                          <ul className="space-y-1">
+                            {detail.concerns.map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p>No published figure triggered a concern.</p>
+                        )}
+                      </div>
+
+                      <div>
+                        <p className="mb-1 font-medium text-stone-700">What offsets the risk</p>
+                        {detail.strengths.length > 0 ? (
+                          <ul className="space-y-1">
+                            {detail.strengths.map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p>No published figure argued in the company&apos;s favour.</p>
+                        )}
+                      </div>
+
+                      <div>
+                        <p className="mb-1 font-medium text-stone-700">Next checks</p>
+                        <ul className="space-y-1">
+                          {detail.nextChecks.map((item) => (
+                            <li key={item}>{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      <p className="text-xs text-stone-500">{MODEL_NOTE}</p>
                     </div>
-                  ) : null}
+                  </details>
                 </div>
               ) : (
-                <div className="border-l-4 border-l-stone-300 bg-white p-6 shadow-sm">
+                <div className="mt-4 rounded-xl border-l-4 border-l-stone-300 bg-white p-6 shadow-sm">
                   <p className="text-lg font-semibold text-stone-700">
                     No screening verdict for {toApiSymbol(symbol)}
                   </p>
@@ -849,6 +965,8 @@ export default function Page() {
               loading={loading}
               unknownSymbol={unknownSymbol}
             />
+
+            <ResearchLinks symbol={toApiSymbol(symbol)} fundamentals={fundamentals} />
           </main>
 
           <footer className="border-t border-stone-200 pt-8">

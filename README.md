@@ -20,8 +20,13 @@ not recommend buying or selling anything.
   missing. If nothing a score needs was published, no score is shown.
 - **Recent signals.** The day's move, and the tone of retrieved headlines.
   No tone is reported at all when fewer than five articles matched.
-- **A data status panel.** Source, retrieval time, cache window, confidence,
-  and a plain explanation of anything that failed, with a retry.
+- **A data status note.** The price timestamp and the reporting period are stated
+  in the open, because that is what you need before trusting a number. Sources,
+  cache windows and anything that failed are behind the "?". Failures are never
+  hidden there; a degraded source is stated in the open.
+- **Five links to the primary sources** for every company: the Screener.in page
+  the figures are read from, the Yahoo Finance profile, NSE filings, NSE results,
+  and the BSE quote page.
 
 ## What it does not do
 
@@ -139,6 +144,8 @@ serverless invocation. Configure it in `vercel.json`:
 
 - Headline tone is a keyword count, not an understanding of the article. It
   needs at least five retrieved articles before it is reported at all.
+- A failed request is retried once automatically, so the page does not depend on
+  the reader pressing anything.
 - Company figures are the latest completed financial year. They are not a
   trailing twelve-month view and are not adjusted for later restatements.
 - Screener.in does not publish a debt-to-equity figure on the pages Finalysis

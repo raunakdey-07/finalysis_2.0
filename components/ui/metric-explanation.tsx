@@ -212,9 +212,11 @@ type MetricExplanationProps = {
   metric: EducationKey;
   label?: string;
   className?: string;
+  /** Extra lines shown under the generic explanation, for this particular case. */
+  lines?: string[];
 };
 
-export function MetricExplanation({ metric, label, className }: MetricExplanationProps) {
+export function MetricExplanation({ metric, label, className, lines }: MetricExplanationProps) {
   const definition = getMetricDefinition(metric);
   if (!definition) return null;
 
@@ -223,6 +225,7 @@ export function MetricExplanation({ metric, label, className }: MetricExplanatio
       localKey={`metric-${metric}`}
       label={label ?? `What ${definition.name} means`}
       title={definition.name}
+      lines={lines}
       className={className}
       body={
         <>

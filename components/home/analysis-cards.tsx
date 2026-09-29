@@ -11,18 +11,28 @@ import type { EducationKey } from "@/lib/education";
 function Card({
   title,
   subtitle,
+  topRule,
+  style,
   children,
-  rule,
 }: {
   title: string;
   subtitle: string;
+  topRule?: string;
+  /** The style token for this card, used for the top rule and the corner label. */
+  style?: ReturnType<typeof styleFor>;
   children: React.ReactNode;
-  rule?: string;
 }) {
   return (
-    <section className={`border-l-4 bg-white p-5 shadow-sm ${rule ?? "border-l-stone-200"}`}>
-      <h3 className="text-sm font-medium text-stone-700">{title}</h3>
-      <p className="mt-1 text-xs text-stone-600">{subtitle}</p>
+    <section className={`border-t-4 bg-white p-5 shadow-sm ${topRule ?? "border-t-stone-200"}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-medium text-stone-600">{title}</h3>
+          <p className="mt-1 text-xs text-stone-500">{subtitle}</p>
+        </div>
+        {style ? (
+          <span className={`text-xs font-semibold ${style.text}`}>{style.label}</span>
+        ) : null}
+      </div>
       {children}
     </section>
   );
@@ -61,8 +71,15 @@ function MetricRow({
  * which made the card tall without adding anything the reader could not get by
  * asking.
  */
-function ScoreBody({ score, explain }: { score: MetricScore; explain: EducationKey }) {
-  const style = styleFor(score.verdict ?? "unknown");
+function ScoreBody({
+  score,
+  explain,
+  style,
+}: {
+  score: MetricScore;
+  explain: EducationKey;
+  style: ReturnType<typeof styleFor>;
+}) {
 
   if (score.score === null) {
     return (
@@ -92,17 +109,19 @@ function ScoreBody({ score, explain }: { score: MetricScore; explain: EducationK
           ]}
         />
       </div>
-      <p className={`mt-1 text-xs font-medium ${style.text}`}>{style.label}</p>
 
       <div
         className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-stone-100"
         role="presentation"
         aria-hidden="true"
       >
-        <div className={`h-1.5 rounded-full ${style.bar}`} style={{ width: `${score.score}%` }} />
+        <div
+          className={`h-1.5 rounded-full transition-all ${style.bar}`}
+          style={{ width: `${score.score}%` }}
+        />
       </div>
 
-      <p className="mt-2 text-xs text-stone-600">
+      <p className="mt-2 text-xs text-stone-500">
         Built from {score.available} of {score.considered} published figure
         {score.considered === 1 ? "" : "s"}.
         {score.missing.some((label) => label === "P/E" || label === "P/B")
@@ -210,18 +229,19 @@ export function AnalysisCards({
       : "Company figures not retrieved.";
 
   return (
-    <div className="mb-12 grid gap-5 sm:grid-cols-3">
+    <div className="mb-12 grid gap-6 sm:grid-cols-3">
       <Card
         title="Business quality"
         subtitle="Returns on capital"
-        rule={businessQuality ? qualityStyle.rule : undefined}
+        topRule={businessQuality ? qualityStyle.topRule : undefined}
+        style={businessQuality ? qualityStyle : undefined}
       >
         {loading || !businessQuality ? (
-          <p className="mt-4 text-sm text-stone-600">{notRetrieved}</p>
+          <p className="mt-4 text-sm text-stone-500">{notRetrieved}</p>
         ) : (
           <>
-            <ScoreBody score={businessQuality} explain="businessQuality" />
-            <dl className="mt-4 space-y-2.5 border-t border-stone-100 pt-4">
+            <ScoreBody score={businessQuality} explain="businessQuality" style={qualityStyle} />
+            <dl className="mt-5 space-y-2.5 border-t border-stone-100 pt-4">
               <MetricRow label="ROE" explain="roe" value={formatPercent(fundamentals?.roe)} />
               <MetricRow label="ROCE" explain="roce" value={formatPercent(fundamentals?.roce)} />
               <MetricRow
@@ -237,14 +257,15 @@ export function AnalysisCards({
       <Card
         title="Valuation"
         subtitle="Price against earnings and net worth"
-        rule={valuation ? valuationStyle.rule : undefined}
+        topRule={valuation ? valuationStyle.topRule : undefined}
+        style={valuation ? valuationStyle : undefined}
       >
         {loading || !valuation ? (
-          <p className="mt-4 text-sm text-stone-600">{notRetrieved}</p>
+          <p className="mt-4 text-sm text-stone-500">{notRetrieved}</p>
         ) : (
           <>
-            <ScoreBody score={valuation} explain="valuation" />
-            <dl className="mt-4 space-y-2.5 border-t border-stone-100 pt-4">
+            <ScoreBody score={valuation} explain="valuation" style={valuationStyle} />
+            <dl className="mt-5 space-y-2.5 border-t border-stone-100 pt-4">
               <MetricRow
                 label="P/E"
                 explain="peRatio"

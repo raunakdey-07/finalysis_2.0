@@ -477,31 +477,3 @@ export async function getNews(context: CompanyContext): Promise<CompanyNewsResul
     }),
   };
 }
-
-/**
- * Neutral starting points for a company with no fresh coverage.
- *
- * These are links, not articles. They are flagged synthetic so no tone is
- * computed from them and the UI can say plainly what they are.
- */
-export function buildResearchLinks(context: CompanyContext, limit: number): NewsItem[] {
-  if (!context) return [];
-
-  const ticker = context.symbol.replace(/\.NS$/i, '');
-  const now = new Date().toISOString();
-  const sources = [
-    { title: `${context.companyName ?? ticker}: company page`, source: 'Screener.in', link: `https://www.screener.in/company/${encodeURIComponent(ticker)}/` },
-    { title: `${ticker}: NSE corporate filings`, source: 'NSE India', link: 'https://www.nseindia.com/companies-listing/corporate-filings-announcements' },
-    { title: `${ticker}: quarterly results`, source: 'NSE India', link: 'https://www.nseindia.com/companies-listing/quarterly-results' },
-    { title: `${ticker}: exchange quote page`, source: 'NSE India', link: `https://www.nseindia.com/get-quotes/equity?symbol=${encodeURIComponent(ticker)}` },
-  ];
-
-  return sources.slice(0, Math.max(0, limit)).map((entry) => ({
-    id: `link-${stableId(entry.link)}`,
-    title: entry.title,
-    link: entry.link,
-    pubDate: now,
-    source: entry.source,
-    synthetic: true,
-  }));
-}

@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   MIN_ARTICLES_FOR_TONE,
-  buildResearchLinks,
   matchesCompany,
   parseRssFeed,
   scoreHeadline,
   summariseTone,
 } from '@/lib/sentiment';
+import { buildResearchLinks } from '@/lib/research-links';
 
 const RSS = `<?xml version="1.0"?>
 <rss><channel>
@@ -202,13 +202,32 @@ describe('matchesCompany', () => {
 });
 
 describe('buildResearchLinks', () => {
-  it('marks every placeholder as synthetic so it is never counted as evidence', () => {
-    const links = buildResearchLinks({ symbol: 'RELIANCE', companyName: 'Reliance Industries Limited' }, 4);
-    expect(links.length).toBeGreaterThan(0);
-    expect(links.every((link) => link.synthetic === true)).toBe(true);
+  it('offers five primary sources for the company', () => {
+    const links = buildResearchLinks('RELIANCE', 'Reliance Industries Limited');
+    expect(links).toHaveLength(5);
+    expect(links.map((link) => link.source)).toEqual([
+      'Screener.in',
+      'Yahoo Finance',
+      'NSE India',
+      'NSE India',
+      'BSE India',
+    ]);
   });
 
-  it('returns nothing when there is no company in context', () => {
-    expect(buildResearchLinks(null, 4)).toEqual([]);
+  it('builds every URL from the ticker, and never leaves a placeholder', () => {
+    for (const link of buildResearchLinks('TCS', 'Tata Consultancy Services Ltd')) {
+      expect(link.href).toMatch(/^https:\/\//);
+      expect(link.href).not.toMatch(/undefined|null|\/company\/\/|\/\/;/);
+    }
+  });
+
+  it('falls back to the ticker when no company name is available', () => {
+    const links = buildResearchLinks('TCS', null);
+    expect(links[0].label).toBe('TCS: company page');
+  });
+
+  it('escapes a ticker that contains an ampersand', () => {
+    const [screener] = buildResearchLinks('M&M', 'Mahindra & Mahindra Limited');
+    expect(screener.href).toBe('https://www.screener.in/company/M%26M/');
   });
 });
