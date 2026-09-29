@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Funnel } from "lucide-react";
 import type {
   ApiResponse,
@@ -11,11 +11,12 @@ import type {
 import type { MetricsPayload } from "@/app/api/metrics/route";
 import type { NewsPayload } from "@/app/api/news/route";
 import type { ScreeningVerdict } from "@/lib/metrics";
+import { COVERED_SYMBOL_COUNT } from "@/lib/symbol-resolver";
 import { AnalysisCards } from "@/components/home/analysis-cards";
 import { DataNote } from "@/components/home/data-note";
 import { NewsSection } from "@/components/home/news-section";
 import { styleFor } from "@/components/home/score-style";
-import { MethodologyDialog } from "@/components/disclaimer-modal";
+import { DisclaimerGate, MethodologyDialog } from "@/components/disclaimer-modal";
 import { ScoreExplanation } from "@/components/ui/metric-explanation";
 import { formatRupees, formatSignedPercent } from "@/lib/format";
 
@@ -26,8 +27,6 @@ const QUICK_PICKS: { symbol: string; label: string }[] = [
   { symbol: "TCS.NS", label: "TCS" },
   { symbol: "HDFCBANK.NS", label: "HDFC Bank" },
   { symbol: "INFY.NS", label: "Infosys" },
-  { symbol: "ICICIBANK.NS", label: "ICICI Bank" },
-  { symbol: "SBIN.NS", label: "State Bank" },
   { symbol: "ITC.NS", label: "ITC" },
   { symbol: "BHARTIARTL.NS", label: "Airtel" },
 ];
@@ -117,9 +116,63 @@ function buildNextChecks(
   return Array.from(new Set(checks)).slice(0, 3);
 }
 
+/**
+ * The URL is the single source of truth for which company is shown.
+ *
+ * Reading it during render rather than in an effect matters twice over. In an
+ * effect, the first render always shows the default company, so every deep
+ * link fires a throwaway request for it before switching, and reading
+ * `window` in the initial state directly is a hydration mismatch, because the
+ * server had no window to read. `useSyncExternalStore` gives the server a
+ * defined snapshot and the client the real one, with React reconciling the two
+ * after hydration instead of warning about them.
+ */
+const SYMBOL_EVENT = "finalysis:symbol";
+
+function subscribeToLocation(callback: () => void): () => void {
+  window.addEventListener("popstate", callback);
+  window.addEventListener(SYMBOL_EVENT, callback);
+  return () => {
+    window.removeEventListener("popstate", callback);
+    window.removeEventListener(SYMBOL_EVENT, callback);
+  };
+}
+
+function symbolFromLocation(): string {
+  const fromUrl = new URLSearchParams(window.location.search).get("symbol");
+  if (!fromUrl) return DEFAULT_SYMBOL;
+
+  // The suffix is stripped BEFORE validation. Validating the dotted form first
+  // rejected every URL this app writes, so picking a company from search or a
+  // shortcut updated the address bar and left the previous company on screen.
+  const normalized = fromUrl.toUpperCase().trim().replace(/\.NSE?$/i, "").replace(/\.BO$/i, "");
+  if (!/^[A-Z0-9&\-]{1,20}$/.test(normalized)) return DEFAULT_SYMBOL;
+  return `${normalized}.NS`;
+}
+
+function useLocationSymbol(): string {
+  return useSyncExternalStore(subscribeToLocation, symbolFromLocation, () => DEFAULT_SYMBOL);
+}
+
+/**
+ * False during the server render, true from the first client render onwards.
+ *
+ * The load effect waits for this. Without the wait it fires on the first
+ * client render, which still holds the server's default symbol for one commit,
+ * so every deep link fetched the default company before the requested one.
+ */
+function useHydrated(): boolean {
+  return useSyncExternalStore(
+    () => () => undefined,
+    () => true,
+    () => false
+  );
+}
+
 export default function Page() {
-  const [symbol, setSymbol] = useState(DEFAULT_SYMBOL);
-  const [symbolInput, setSymbolInput] = useState(DEFAULT_SYMBOL);
+  const hydrated = useHydrated();
+  const symbol = useLocationSymbol();
+  const [symbolInput, setSymbolInput] = useState(symbol);
   const [sector, setSector] = useState<string>("All");
   const [sectorOpen, setSectorOpen] = useState(false);
 
@@ -132,6 +185,13 @@ export default function Page() {
   const [metrics, setMetrics] = useState<MetricsPayload | null>(null);
   const [news, setNews] = useState<NewsPayload | null>(null);
   const [newsProvenance, setNewsProvenance] = useState<Provenance | null>(null);
+  /**
+   * Kept even when the metrics call fails. The failure response carries the
+   * reason each source could not answer, and that is exactly what the reader
+   * needs when the page is empty.
+   */
+  const [metricsProvenance, setMetricsProvenance] = useState<Provenance | null>(null);
+  const [metricsErrorCode, setMetricsErrorCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [retrying, setRetrying] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -140,6 +200,38 @@ export default function Page() {
   const abortRef = useRef<AbortController | null>(null);
   const suggestionAbort = useRef<AbortController | null>(null);
   const suggestionCache = useRef<Map<string, SuggestionCacheEntry>>(new Map());
+  const sectorRef = useRef<HTMLDetailsElement>(null);
+  const activeOptionRef = useRef<HTMLButtonElement>(null);
+
+  // The listbox is scrollable, so arrow-key navigation has to bring the active
+  // option into view. Without this the last option sat two pixels below the
+  // visible area and was selected unseen.
+  useEffect(() => {
+    activeOptionRef.current?.scrollIntoView({ block: "nearest" });
+  }, [activeSuggestion, suggestions]);
+
+  /**
+   * A native disclosure only closes on a second click. A popover that traps
+   * the pointer and the keyboard is a bug, so Escape and an outside click both
+   * dismiss it.
+   */
+  useEffect(() => {
+    if (!sectorOpen) return;
+
+    const onPointerDown = (event: MouseEvent) => {
+      if (!sectorRef.current?.contains(event.target as Node)) setSectorOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSectorOpen(false);
+    };
+
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [sectorOpen]);
 
   const load = useCallback(async (apiSymbol: string, signal: AbortSignal) => {
     const [metricsResponse, newsResponse] = await Promise.allSettled([
@@ -149,42 +241,36 @@ export default function Page() {
 
     if (metricsResponse.status === "fulfilled") {
       const body: ApiResponse<MetricsPayload> = await metricsResponse.value.json();
-      if (body.success && body.data) {
-        setMetrics(body.data);
-      } else {
-        setMetrics(null);
-      }
+      setMetricsProvenance(body.provenance ?? null);
+      setMetricsErrorCode(body.success && body.data ? null : (body.errorCode ?? "DATA_UNAVAILABLE"));
+      setMetrics(body.success && body.data ? body.data : null);
     } else {
       setMetrics(null);
+      setMetricsProvenance(null);
+      setMetricsErrorCode("REQUEST_FAILED");
     }
 
     if (newsResponse.status === "fulfilled") {
       const body: ApiResponse<NewsPayload> = await newsResponse.value.json();
-      if (body.success && body.data) {
-        setNews(body.data);
-        setNewsProvenance(body.provenance ?? null);
-      } else {
-        setNews(null);
-        setNewsProvenance(body.provenance ?? null);
-      }
+      setNews(body.success && body.data ? body.data : null);
+      setNewsProvenance(body.provenance ?? null);
     } else {
       setNews(null);
+      setNewsProvenance(null);
     }
   }, []);
 
   useEffect(() => {
-    const fromUrl = new URLSearchParams(window.location.search).get("symbol");
-    if (!fromUrl) return;
-
-    const normalized = fromUrl.toUpperCase().trim();
-    if (!/^[A-Z0-9&\-]{1,20}$/.test(normalized)) return;
-
-    const canonical = `${normalized.replace(/\.NS$/i, "")}.NS`;
-    setSymbol(canonical);
-    setSymbolInput(canonical);
-  }, []);
+    // Keep the input in step with the company on screen. Without this, a deep
+    // link rendered the requested company but left the default ticker in the
+    // search box, which then looked up the wrong company as a suggestion.
+    setSymbolInput(symbol);
+  }, [symbol]);
 
   useEffect(() => {
+    // Wait for the store to reconcile to the real URL before asking for data.
+    if (!hydrated) return;
+
     const controller = new AbortController();
     abortRef.current = controller;
     const id = ++requestId.current;
@@ -194,6 +280,8 @@ export default function Page() {
     setMetrics(null);
     setNews(null);
     setNewsProvenance(null);
+    setMetricsProvenance(null);
+    setMetricsErrorCode(null);
 
     load(toApiSymbol(symbol), controller.signal)
       .catch(() => undefined)
@@ -202,11 +290,10 @@ export default function Page() {
       });
 
     return () => controller.abort();
-  }, [symbol, attempt, load]);
+  }, [symbol, attempt, load, hydrated]);
 
   function selectSymbol(next: string) {
     const canonical = `${toApiSymbol(next).toUpperCase()}.NS`;
-    setSymbol(canonical);
     setSymbolInput(canonical);
     setSearchMessage(null);
     setSuggestionsOpen(false);
@@ -216,6 +303,7 @@ export default function Page() {
     const url = new URL(window.location.href);
     url.searchParams.set("symbol", canonical);
     window.history.replaceState({}, "", url.toString());
+    window.dispatchEvent(new Event(SYMBOL_EVENT));
   }
 
   const clearSuggestions = useCallback(() => {
@@ -268,6 +356,18 @@ export default function Page() {
         if (controller.signal.aborted) return;
 
         const found = (body.data ?? []).slice(0, 5);
+
+        // The API explains itself: a miss, a rate limit and an unsupported
+        // ticker are different problems. Discarding that message and showing a
+        // flat "No matches" made a rate limit look like a missing company.
+        setSearchMessage(
+          found.length === 0
+            ? body.errorCode === "RATE_LIMITED"
+              ? "Too many searches. Wait a moment, then try again."
+              : (body.error ?? `No stock in the covered list matches "${query}".`)
+            : null
+        );
+
         suggestionCache.current.delete(key);
         suggestionCache.current.set(key, { suggestions: found, timestamp: Date.now() });
         while (suggestionCache.current.size > SUGGESTION_CACHE_LIMIT) {
@@ -277,10 +377,13 @@ export default function Page() {
         }
 
         setSuggestions(found);
-        setSuggestionsOpen(true);
+        setSuggestionsOpen(found.length > 0);
         setActiveSuggestion(found.length > 0 ? 0 : -1);
       } catch {
-        if (!controller.signal.aborted) clearSuggestions();
+        if (!controller.signal.aborted) {
+          clearSuggestions();
+          setSearchMessage("Search is unavailable right now. Try again in a moment.");
+        }
       } finally {
         if (!controller.signal.aborted) setSuggestionsLoading(false);
       }
@@ -294,11 +397,14 @@ export default function Page() {
 
   async function handleSearchSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const query = symbolInput.trim();
-    if (query.length === 0) return;
-
     clearSuggestions();
     setSearchMessage(null);
+
+    const query = symbolInput.trim();
+    if (query.length === 0) {
+      setSearchMessage("Type a ticker or company name to search.");
+      return;
+    }
 
     const params = new URLSearchParams({ q: query });
     if (sector !== "All") params.set("sector", sector);
@@ -360,28 +466,30 @@ export default function Page() {
   const price = metrics?.quote ?? null;
   const fundamentals = metrics?.fundamentals ?? null;
   const verdict = metrics?.verdict ?? null;
-  const nextChecks = useMemo(
-    () => buildNextChecks(fundamentals, verdict),
-    [fundamentals, verdict]
-  );
+  // Cheap string work over two values, so it is derived rather than memoised.
+  const nextChecks = buildNextChecks(fundamentals, verdict);
 
   const verdictStyle = styleFor(
     verdict?.label === "insufficient-data" ? "unknown" : (verdict?.label ?? "unknown")
   );
 
   const warnings = [
+    ...(metricsProvenance?.warnings ?? []),
     ...(metrics?.quoteProvenance?.warnings ?? []),
     ...(metrics?.fundamentalsProvenance?.warnings ?? []),
     ...(newsProvenance?.warnings ?? []),
   ];
 
   const nothingLoaded = !loading && !price && !fundamentals;
+  /** A ticker the user mistyped is a different problem from a provider outage. */
+  const unknownSymbol = metricsErrorCode === "UNKNOWN_SYMBOL";
   const activeSuggestionId =
     activeSuggestion >= 0 ? `stock-suggestion-${suggestions[activeSuggestion]?.symbol}` : undefined;
   const showSuggestions = suggestionsOpen && !suggestionsLoading && suggestions.length > 0;
 
   return (
     <>
+      <DisclaimerGate />
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:shadow"
@@ -409,27 +517,8 @@ export default function Page() {
               Find a company
             </h2>
 
-            <ul className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {QUICK_PICKS.map((pick) => (
-                <li key={pick.symbol}>
-                  <button
-                    type="button"
-                    onClick={() => selectSymbol(pick.symbol)}
-                    aria-current={symbol === pick.symbol ? "true" : undefined}
-                    className={`w-full rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition ${
-                      symbol === pick.symbol
-                        ? "border-stone-800 bg-white text-stone-900 ring-1 ring-stone-800"
-                        : "border-stone-200 bg-white text-stone-700 hover:border-stone-400"
-                    }`}
-                  >
-                    {pick.label}
-                  </button>
-                </li>
-              ))}
-            </ul>
-
-            <form onSubmit={handleSearchSubmit} className="mt-4 flex items-start gap-2">
-              <div className="relative flex-1 sm:w-72">
+            <form onSubmit={handleSearchSubmit} className="flex items-start gap-2">
+              <div className="relative flex-1">
                 <label htmlFor="stock-search" className="sr-only">
                   Search by ticker or company name
                 </label>
@@ -466,12 +555,12 @@ export default function Page() {
                   placeholder="Ticker or company name, e.g. BAJFINANCE"
                 />
 
-                {suggestionsOpen && (suggestionsLoading || suggestions.length === 0) ? (
+                {suggestionsOpen && suggestionsLoading ? (
                   <p
                     role="status"
                     className="absolute left-0 right-0 z-20 mt-1 rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-600 shadow-sm"
                   >
-                    {suggestionsLoading ? "Searching…" : "No matches."}
+                    Searching…
                   </p>
                 ) : null}
 
@@ -487,6 +576,7 @@ export default function Page() {
                         <li key={suggestion.symbol} role="presentation">
                           <button
                             id={`stock-suggestion-${suggestion.symbol}`}
+                            ref={index === activeSuggestion ? activeOptionRef : undefined}
                             type="button"
                             role="option"
                             aria-selected={index === activeSuggestion}
@@ -517,6 +607,7 @@ export default function Page() {
               </div>
 
               <details
+                ref={sectorRef}
                 open={sectorOpen}
                 onToggle={(event) => setSectorOpen((event.currentTarget as HTMLDetailsElement).open)}
                 className="relative"
@@ -555,9 +646,39 @@ export default function Page() {
               </button>
             </form>
 
-            <div role="status" aria-live="polite" className="min-h-5">
-              {searchMessage ? <p className="mt-2 text-xs text-stone-600">{searchMessage}</p> : null}
+            <div role="status" aria-live="polite" className="mt-2 min-h-5">
+              {searchMessage ? <p className="text-xs text-stone-600">{searchMessage}</p> : null}
             </div>
+
+            {/*
+              Shortcuts sit under the search box, not above it. Search is the
+              action; these are a convenience, and leading with them pushed the
+              input itself below the fold on a phone.
+            */}
+            <ul className="mt-4 flex flex-wrap items-center gap-x-1 gap-y-1">
+              {QUICK_PICKS.map((pick) => {
+                const isCurrent = symbol === pick.symbol;
+                return (
+                  <li key={pick.symbol}>
+                    <button
+                      type="button"
+                      onClick={() => selectSymbol(pick.symbol)}
+                      aria-current={isCurrent ? "true" : undefined}
+                      className={`rounded px-2 py-2.5 text-sm transition ${
+                        isCurrent
+                          ? "font-medium text-stone-900 underline underline-offset-4"
+                          : "text-stone-600 hover:text-stone-900"
+                      }`}
+                    >
+                      {pick.label}
+                      <span className="sr-only">
+                        {isCurrent ? ", currently shown" : ""}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
           </section>
 
           <main id="main">
@@ -592,7 +713,9 @@ export default function Page() {
                 </p>
               ) : (
                 <p className="mt-2 text-sm text-stone-600">
-                  No price could be retrieved for {toApiSymbol(symbol)}.
+                  {unknownSymbol
+                    ? `${toApiSymbol(symbol)} is not one of the ${COVERED_SYMBOL_COUNT} tickers Finalysis covers.`
+                    : `No price could be retrieved for ${toApiSymbol(symbol)}.`}
                 </p>
               )}
 
@@ -606,9 +729,10 @@ export default function Page() {
             <DataNote
               price={price}
               fundamentals={fundamentals}
-              quoteProvenance={metrics?.quoteProvenance ?? null}
-              fundamentalsProvenance={metrics?.fundamentalsProvenance ?? null}
+              quoteProvenance={metrics?.quoteProvenance ?? metricsProvenance}
+              fundamentalsProvenance={metrics?.fundamentalsProvenance ?? metricsProvenance}
               warnings={Array.from(new Set(warnings))}
+              unknownSymbol={unknownSymbol}
               retrying={retrying}
               onRetry={() => {
                 setRetrying(true);
@@ -617,8 +741,13 @@ export default function Page() {
             />
 
             <section aria-labelledby="verdict-heading" className="mb-10">
-              <h2 id="verdict-heading" className="sr-only">
-                Screening verdict
+              <h2
+                id="verdict-heading"
+                className="mb-3 flex items-center gap-4 text-xs font-medium uppercase tracking-widest text-stone-500"
+              >
+                <span className="h-px flex-1 bg-stone-200" aria-hidden="true" />
+                <span>Screening verdict</span>
+                <span className="h-px flex-1 bg-stone-200" aria-hidden="true" />
               </h2>
 
               {loading ? (
@@ -630,12 +759,14 @@ export default function Page() {
               ) : nothingLoaded ? (
                 <div className="border-l-4 border-l-amber-700 bg-white p-6 shadow-sm">
                   <p className="text-lg font-semibold text-amber-900">
-                    Nothing could be loaded for {toApiSymbol(symbol)}
+                    {unknownSymbol
+                      ? `${toApiSymbol(symbol)} is not a company Finalysis covers`
+                      : `Nothing could be loaded for ${toApiSymbol(symbol)}`}
                   </p>
                   <p className="mt-2 text-sm leading-relaxed text-stone-700">
-                    Both the price source and the company-figures source failed. That is a data
-                    problem, not a view about the company. The status above says which source
-                    failed; try again in a moment.
+                    {unknownSymbol
+                      ? "Finalysis only covers the NSE tickers in its own list. Check the spelling, or try the ticker without a suffix."
+                      : "The price source and the company-figures source did not answer. That is a data problem, not a view about the company. The status above names the source that failed."}
                   </p>
                 </div>
               ) : verdict ? (
@@ -648,10 +779,6 @@ export default function Page() {
                   </p>
                   <p className="mt-2 text-sm leading-relaxed text-stone-700">{verdict.summary}</p>
                   <p className="mt-2 text-sm leading-relaxed text-stone-600">{verdict.basis}</p>
-                  <p className="mt-3 text-xs text-stone-500">
-                    A screening verdict describes what a few published numbers look like against
-                    sector bands. It is not a recommendation, a target price, or a prediction.
-                  </p>
 
                   {nextChecks.length > 0 ? (
                     <div className="mt-5 border-t border-stone-100 pt-4">
@@ -693,6 +820,7 @@ export default function Page() {
                 fundamentals={fundamentals}
                 metrics={metrics?.metrics ?? null}
                 price={price}
+                unknownSymbol={unknownSymbol}
                 news={
                   news
                     ? {
@@ -719,6 +847,7 @@ export default function Page() {
               }
               provenance={newsProvenance}
               loading={loading}
+              unknownSymbol={unknownSymbol}
             />
           </main>
 
