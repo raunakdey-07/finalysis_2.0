@@ -223,20 +223,23 @@ function buildQuoteCandidates(symbol: string): string[] {
 
 export async function fetchYahooQuote(symbol: string): Promise<YahooQuote> {
   const candidates = buildQuoteCandidates(symbol);
-  let rejection: QuoteRejected | Error | null = null;
+  let rejection: Error | null = null;
+  let rejected = 0;
 
   for (const candidate of candidates) {
     try {
       const result = await fetchYahooChart(candidate);
-      if (!result) continue;
-      return parseYahooChartResult(result, symbol);
+      if (result) return parseYahooChartResult(result, symbol);
     } catch (error) {
       rejection = error instanceof Error ? error : new Error('Yahoo Finance quote fetch failed');
+      rejected += 1;
     }
   }
 
-  if (rejection instanceof QuoteRejected) throw rejection;
-  throw new Error(
-    `No NSE quote available for ${symbol}${rejection ? ` (${rejection.message})` : ''}`
-  );
+  // A candidate that returned nothing was a 404, which is a real answer. If any
+  // candidate instead failed outright, that failure is the useful one to report,
+  // otherwise a dead connection reads downstream as "no such ticker".
+  if (rejection && rejected > 0) throw rejection;
+
+  throw new Error(`No NSE quote available for ${symbol}`);
 }

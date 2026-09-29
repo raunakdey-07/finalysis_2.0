@@ -15,11 +15,32 @@ const SCOPE_LABEL: Record<Scope, string> = {
   news: 'News coverage',
 };
 
-function classify(message: string): 'timeout' | 'not-found' | 'unavailable' | 'rejected' | 'unknown' {
-  if (/timed out|abort|ETIMEDOUT|ESOCKETTIMEDOUT/i.test(message)) return 'timeout';
-  if (/404|no page for|no NSE quote|not found|no longer/i.test(message)) return 'not-found';
-  if (/429|rate limit|too many/i.test(message)) return 'unavailable';
-  if (/plausible range|currency|rejected/i.test(message)) return 'rejected';
+type Failure = 'network' | 'timeout' | 'not-found' | 'rate-limited' | 'rejected' | 'unknown';
+
+/**
+ * Ordered most-specific first.
+ *
+ * Order matters. A network failure used to be reported as a wrong ticker
+ * because the wrapper text "No NSE quote available" contains the words
+ * "no NSE quote", and a substring test found it even though the real cause was
+ * a dead connection. Transport failures are therefore checked before the
+ * message the application itself composed.
+ */
+const FAILURE_PATTERNS: { failure: Failure; pattern: RegExp }[] = [
+  { failure: 'timeout', pattern: /timed out|abort|ETIMEDOUT|ESOCKETTIMEDOUT|TimeoutError/i },
+  {
+    failure: 'network',
+    pattern: /fetch failed|ENOTFOUND|ECONNREFUSED|ECONNRESET|EAI_AGAIN|network|getaddrinfo|socket hang up|aborted/i,
+  },
+  { failure: 'rate-limited', pattern: /\b429\b|rate limit|too many requests/i },
+  { failure: 'not-found', pattern: /(^|\W)(404|no page for|no NSE quote|no record for|no company page)/i },
+  { failure: 'rejected', pattern: /plausible range|not \w+ currency|discarded|rejected/i },
+];
+
+function classify(message: string): Failure {
+  for (const { failure, pattern } of FAILURE_PATTERNS) {
+    if (pattern.test(message)) return failure;
+  }
   return 'unknown';
 }
 
@@ -33,10 +54,12 @@ export function describeOutage(scope: Scope, error: unknown): string {
   switch (classify(message)) {
     case 'timeout':
       return `${label} did not respond in time.`;
+    case 'network':
+      return `${label} could not be reached. The provider may be down, or the connection failed.`;
+    case 'rate-limited':
+      return `${label} is rate limiting requests right now.`;
     case 'not-found':
       return `${label} has no record for this ticker. Its NSE symbol may differ from the company name.`;
-    case 'unavailable':
-      return `${label} is rate limiting requests right now.`;
     case 'rejected':
       return `${label} returned a value that did not look like an NSE share, so it was discarded.`;
     default:
