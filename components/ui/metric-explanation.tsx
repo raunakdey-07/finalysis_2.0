@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils/cn";
 import type { EducationKey } from "@/lib/education";
 import { getMetricDefinition } from "@/lib/education";
@@ -18,27 +18,35 @@ function setOpenKey(next: string | null): void {
   subscribers.forEach((notify) => notify());
 }
 
-function useExclusiveOpen(localKey: string): [boolean, (open: boolean) => void] {
+function useExclusiveOpen(groupKey: string): [boolean, (open: boolean) => void] {
   const [open, setOpen] = useState(false);
+  /**
+   * Two controls can share a group, for example the "Recent signals" card and
+   * the news-tone row. Keying only on the group made both report themselves as
+   * the open one, so they opened together and each closed the other. The
+   * instance id is part of the key, so exactly one of a group is ever open.
+   */
+  const instanceId = useId();
+  const key = `${groupKey}#${instanceId}`;
 
   useEffect(() => {
-    const sync = () => setOpen(openKey === localKey);
+    const sync = () => setOpen(openKey === key);
     sync();
     subscribers.add(sync);
     return () => {
       subscribers.delete(sync);
     };
-  }, [localKey]);
+  }, [key]);
 
   const toggle = useCallback(
     (next: boolean) => {
       if (next) {
-        setOpenKey(localKey);
+        setOpenKey(key);
       } else {
         setOpenKey(null);
       }
     },
-    [localKey]
+    [key]
   );
 
   return [open, toggle];
@@ -49,15 +57,20 @@ type PopoverProps = {
   title: string;
   body: React.ReactNode;
   label: string;
+  /** Company-specific lines shown under the generic explanation. */
+  lines?: string[];
   variant?: "inline" | "score";
   className?: string;
 };
+
+const VIEWPORT_MARGIN = 8;
 
 function ExplanationPopover({
   localKey,
   title,
   body,
   label,
+  lines,
   variant = "inline",
   className,
 }: PopoverProps) {
@@ -65,7 +78,35 @@ function ExplanationPopover({
   const wrapperRef = useRef<HTMLSpanElement>(null);
   const panelRef = useRef<HTMLSpanElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const panelId = useId();
+  const instanceId = useId();
+  const panelId = `${instanceId}-panel`;
+
+  /**
+   * The panel is wider than a phone is. Centring it on a trigger near the left
+   * edge pushed a third of the explanation off screen where it was clipped and
+   * unreachable.
+   *
+   * The offset is written straight to the element rather than held in state.
+   * This is a measurement of the rendered layout, not application state, and
+   * routing it through state would re-render on every open for a value the DOM
+   * can carry itself.
+   */
+  useLayoutEffect(() => {
+    if (!open) return;
+    const panel = panelRef.current;
+    const wrapper = wrapperRef.current;
+    if (!panel || !wrapper) return;
+
+    const panelWidth = panel.offsetWidth;
+    const wrapperLeft = wrapper.getBoundingClientRect().left;
+    const viewportWidth = document.documentElement.clientWidth;
+
+    const minLeft = VIEWPORT_MARGIN - wrapperLeft;
+    const maxLeft = viewportWidth - VIEWPORT_MARGIN - panelWidth - wrapperLeft;
+
+    panel.style.transform = 'none';
+    panel.style.left = `${Math.max(minLeft, Math.min(0, maxLeft))}px`;
+  }, [open, localKey, instanceId]);
 
   useEffect(() => {
     if (!open) return;
@@ -76,7 +117,6 @@ function ExplanationPopover({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       setOpen(false);
-      // Send focus back to the control that opened it.
       triggerRef.current?.focus();
     };
 
@@ -101,13 +141,19 @@ function ExplanationPopover({
 
   const close = useCallback(() => setOpen(false), [setOpen]);
 
+  const hoverHandlers = supportsHover()
+    ? { onMouseEnter: () => setOpen(true), onMouseLeave: () => close() }
+    : {};
+
   return (
-    <span className={cn("relative inline-flex items-start", className)} ref={wrapperRef}>
+    <span
+      className={cn("relative inline-flex items-start", className)}
+      ref={wrapperRef}
+      {...hoverHandlers}
+    >
       <button
         ref={triggerRef}
         type="button"
-        onMouseEnter={() => supportsHover() && setOpen(true)}
-        onMouseLeave={() => supportsHover() && close()}
         onClick={() => setOpen(!open)}
         onBlur={(event) => {
           if (!wrapperRef.current?.contains(event.relatedTarget as Node)) close();
@@ -116,8 +162,8 @@ function ExplanationPopover({
         aria-controls={panelId}
         aria-label={label}
         className={cn(
-          "inline-flex shrink-0 items-center justify-center rounded-full text-stone-500",
-          "outline-none transition hover:text-stone-800",
+          "inline-flex shrink-0 items-center justify-center rounded-full text-stone-600",
+          "outline-none transition hover:text-stone-900",
           "focus-visible:ring-2 focus-visible:ring-stone-700 focus-visible:ring-offset-2",
           variant === "score" ? "h-6 w-6 text-xs" : "-ml-1 h-6 w-6 text-[11px]"
         )}
@@ -133,15 +179,29 @@ function ExplanationPopover({
           aria-label={title}
           tabIndex={-1}
           className={cn(
-            "absolute left-1/2 top-full z-30 mt-1 w-[min(20rem,calc(100vw-2rem))] -translate-x-1/2",
+            // Click-through. The panel is wider and taller than the rows beneath
+            // it, so making it opaque to the pointer meant the next metric's
+            // "?" could not be clicked while this one was open. Reference text
+            // behind a "?" does not need to be selectable, and a click that
+            // lands on it now reaches the control underneath.
+            "pointer-events-none absolute left-0 top-full z-30 mt-1",
+            "w-[min(20rem,calc(100vw-1.5rem))] select-none",
             "rounded-md border border-stone-300 bg-white p-3 text-xs leading-relaxed",
             "text-stone-700 shadow-md outline-none"
           )}
-          onMouseEnter={() => supportsHover() && setOpen(true)}
-          onMouseLeave={() => supportsHover() && close()}
         >
           <span className="mb-1.5 block font-semibold text-stone-900">{title}</span>
           {body}
+          {lines && lines.length > 0 ? (
+            <span className="mt-2 block border-t border-stone-200 pt-2">
+              <span className="mb-1 block font-medium text-stone-800">For this company</span>
+              <ul className="list-disc space-y-1 pl-4">
+                {lines.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            </span>
+          ) : null}
         </span>
       ) : null}
     </span>
@@ -189,11 +249,13 @@ export function MetricExplanation({ metric, label, className }: MetricExplanatio
 
 type ScoreExplanationProps = {
   metric: EducationKey;
+  /** Why this particular score came out where it did. */
+  lines?: string[];
   label?: string;
   className?: string;
 };
 
-export function ScoreExplanation({ metric, label, className }: ScoreExplanationProps) {
+export function ScoreExplanation({ metric, lines, label, className }: ScoreExplanationProps) {
   const definition = getMetricDefinition(metric);
   if (!definition) return null;
 
@@ -202,6 +264,7 @@ export function ScoreExplanation({ metric, label, className }: ScoreExplanationP
       localKey={`score-${metric}`}
       label={label ?? `How the ${definition.name} score works`}
       title={definition.name}
+      lines={lines}
       variant="score"
       className={className}
       body={
