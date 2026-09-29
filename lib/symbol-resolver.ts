@@ -23,6 +23,8 @@ type NormalizedSymbolEntry = {
   normalizedName: string;
   normalizedAliases: string[];
   normalizedSymbol: string;
+  /** Distinct letters across every string this entry can be matched on. */
+  chars: Set<string>;
 };
 
 type ResolvedSector =
@@ -266,15 +268,22 @@ export interface ResolutionResult {
 
   const symbols = stocksIndex as SymbolEntry[];
 
-const normalizedEntries: NormalizedSymbolEntry[] = symbols.map((entry) => ({
-  symbol: entry.symbol,
-  name: entry.name,
-  sector: entry.sector,
-  industry: entry.industry,
-  normalizedName: normalize(entry.name),
-  normalizedAliases: entry.aliases.map(normalize),
-  normalizedSymbol: normalize(entry.symbol),
-}));
+const normalizedEntries: NormalizedSymbolEntry[] = symbols.map((entry) => {
+  const normalizedName = normalize(entry.name);
+  const normalizedAliases = entry.aliases.map(normalize);
+  const normalizedSymbol = normalize(entry.symbol);
+  return {
+    symbol: entry.symbol,
+    name: entry.name,
+    sector: entry.sector,
+    industry: entry.industry,
+    normalizedName,
+    normalizedAliases,
+    normalizedSymbol,
+    /** Distinct letters across every string this entry can be matched on. */
+    chars: new Set([normalizedName, normalizedSymbol, ...normalizedAliases].join('').split('')),
+  };
+});
 
   const entriesBySymbol = new Map(normalizedEntries.map((entry) => [entry.symbol.toUpperCase(), entry]));
 
@@ -294,6 +303,25 @@ const normalizedEntries: NormalizedSymbolEntry[] = symbols.map((entry) => ({
     return entry.sector === sectorFilter;
   }
 
+  /**
+   * A cheap necessary condition for a fuzzy match.
+   *
+   * A Levenshtein distance of two or less means two strings differ in at most
+   * two characters, so they must share nearly every distinct letter of the
+   * query. Testing that with a set intersection costs nothing and eliminates
+   * almost the whole dataset for a query that matches nothing, which is what
+   * stopped a single unmatched keystroke from blocking the event loop for half
+   * a second. It cannot discard a real match, because the condition is
+   * necessary rather than sufficient.
+   */
+  function couldBeFuzzyMatch(queryChars: Set<string>, entry: NormalizedSymbolEntry): boolean {
+    let shared = 0;
+    for (const char of queryChars) {
+      if (entry.chars.has(char)) shared += 1;
+    }
+    return shared >= Math.max(2, queryChars.size - 2);
+  }
+
   function scoreEntry(query: string, entry: NormalizedSymbolEntry): number {
     const nameScore = stringSimilarity(query, entry.normalizedName);
 
@@ -306,7 +334,22 @@ const normalizedEntries: NormalizedSymbolEntry[] = symbols.map((entry) => ({
     const prefixBoost = entry.normalizedName.startsWith(query) ? 0.08 : 0;
     const typoScore = bestTypoSimilarity(query, entry);
 
-    return clamp(Math.max(nameScore + prefixBoost, aliasScore * 0.95, symbolScore * 0.9, typoScore), 0, 1);
+    // A near miss on the ticker is stronger evidence than a near miss anywhere
+    // in a long company name. Typing "relaince" has to land on RELIANCE, not
+    // on every other company that happens to contain the word Reliance.
+    const symbolTypoScore = typoSimilarity(query, entry.normalizedSymbol);
+
+    return clamp(
+      Math.max(
+        symbolTypoScore,
+        nameScore + prefixBoost,
+        aliasScore * 0.95,
+        symbolScore * 0.9,
+        typoScore * 0.9
+      ),
+      0,
+      1
+    );
   }
 
   function formatSuggestions(entries: NormalizedSymbolEntry[], limit: number): ResolutionResult['suggestions'] {
@@ -457,11 +500,16 @@ export function resolveSymbol(query: string, options: ResolveSymbolOptions = {})
   }
 
   // 4. Token similarity and fuzzy score
-  const scores = candidates.map((entry) => ({
-    entry,
-    score: scoreEntry(normalized, entry),
-    distance: bestEditDistance(normalized, entry),
-  }));
+  // The character prefilter runs first so a query that matches nothing skips
+  // the edit-distance work entirely.
+  const queryChars = new Set(normalized.split(''));
+  const scores = candidates
+    .filter((entry) => couldBeFuzzyMatch(queryChars, entry))
+    .map((entry) => ({
+      entry,
+      score: scoreEntry(normalized, entry),
+      distance: bestEditDistance(normalized, entry),
+    }));
 
   // Filter entries with meaningful similarity
   const meaningful = scores.filter((s) => s.score >= 0.35);
