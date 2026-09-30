@@ -302,7 +302,7 @@ export function AnalysisCards({
       <div className="grid gap-6 sm:grid-cols-3">
         <Card
           title="Business quality"
-          subtitle="Returns on capital"
+          subtitle="Returns on equity, dividend yield and capital"
           topRule={decision.businessQuality ? qualityStyle.topRule : undefined}
           style={decision.businessQuality ? qualityStyle : undefined}
         >
