@@ -2,9 +2,10 @@
  * Process-local cache with TTL, size bounds, and single-flight loading.
  *
  * This is deliberately NOT a shared cache. On a serverless platform each
- * instance holds its own copy, so a TTL here means "10 minutes per instance",
- * not "10 minutes globally". Callers must treat a miss as normal and must never
- * treat a hit as a guarantee of freshness beyond its own timestamp.
+ * instance holds its own copy, so a TTL here means "this many minutes per
+ * instance", not the same window globally. Callers must treat a miss as normal
+ * and must never treat a hit as a guarantee of freshness beyond its own
+ * timestamp.
  */
 
 import { CacheEntry } from '@/types';

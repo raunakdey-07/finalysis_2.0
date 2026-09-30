@@ -4,7 +4,19 @@ import { describeOutage, isWorthRetrying, logDetail } from '@/lib/errors';
 import { getDailyPricesSnapshot, MAX_SNAPSHOT_AGE_MS, StoredQuote } from '@/lib/nse/daily-prices';
 import { fetchYahooQuote } from '@/lib/yahoo';
 
-const QUOTE_TTL_MS = 10 * 60 * 1000;
+/**
+ * How long a fetched quote is reused.
+ *
+ * Thirty minutes, up from ten. The exchange data itself is already around
+ * fifteen minutes behind, so a shorter window mostly bought extra requests
+ * against a provider that rate limits, and the page states the quote's own
+ * timestamp rather than the age of the copy, so a longer window costs the
+ * reader nothing they can see. The snapshot fallback and the stale-cache path
+ * behind it are what a longer outage falls back to.
+ */
+const QUOTE_TTL_MS = 30 * 60 * 1000;
+/** The same window in the units the reader sees, derived so it cannot drift. */
+const QUOTE_TTL_LABEL = `${QUOTE_TTL_MS / 60_000}m`;
 const CIRCUIT_BREAKER_THRESHOLD = 4;
 const CIRCUIT_BREAKER_COOLDOWN_MS = 60 * 1000;
 const RETRY_DELAYS_MS = [400, 800];
@@ -129,7 +141,7 @@ export async function fetchNSEQuote(
       price: toPrice(cached.data, { kind: 'cached', ageMs }),
       provenance: buildProvenance({
         source: 'Yahoo Finance',
-        cacheTTL: '10m',
+        cacheTTL: QUOTE_TTL_LABEL,
         cacheHit: true,
         lastUpdated: cached.data.quotedAt ?? cached.data.fetchedAt,
         confidenceLevel: ageMs > 5 * 60 * 1000 ? 'medium' : 'high',
@@ -154,7 +166,7 @@ export async function fetchNSEQuote(
       price: toPrice(quote, { kind: 'live', ageMs }),
       provenance: buildProvenance({
         source: 'Yahoo Finance',
-        cacheTTL: '10m',
+        cacheTTL: QUOTE_TTL_LABEL,
         cacheHit: false,
         lastUpdated: quote.quotedAt ?? quote.fetchedAt,
         // A quote from a session the exchange has already closed is still a
@@ -172,7 +184,7 @@ export async function fetchNSEQuote(
       price: null,
       provenance: buildProvenance({
         source: 'Yahoo Finance',
-        cacheTTL: '10m',
+        cacheTTL: QUOTE_TTL_LABEL,
         cacheHit: false,
         lastUpdated: null,
         confidenceLevel: 'unavailable',
@@ -196,7 +208,7 @@ export async function fetchNSEQuote(
       price: toPrice(stale.data, { kind: 'stale-cache', ageMs: stale.ageMs }),
       provenance: buildProvenance({
         source: 'Yahoo Finance (cached)',
-        cacheTTL: '10m',
+        cacheTTL: QUOTE_TTL_LABEL,
         cacheHit: true,
         lastUpdated: stale.data.quotedAt ?? stale.data.fetchedAt,
         confidenceLevel: 'low',
@@ -228,7 +240,7 @@ export async function fetchNSEQuote(
     price: null,
     provenance: buildProvenance({
       source: 'Yahoo Finance',
-      cacheTTL: '10m',
+      cacheTTL: QUOTE_TTL_LABEL,
       cacheHit: false,
       lastUpdated: null,
       confidenceLevel: 'unavailable',
