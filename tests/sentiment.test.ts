@@ -104,15 +104,52 @@ describe('scoreHeadline', () => {
    * "not a loss" scored as a loss.
    */
   it('matches whole words only', () => {
-    // "surprise" contains "rise" and "advertising" contains "rise"; neither is
-    // a gain under a plain substring test.
+    // "surprise" contains "rise", "fallacy" contains "fall" and "floss" contains
+    // "loss". None of the three is the whole word, so none of the three is a
+    // signal, and "order" is not in the list at all once it became a phrase.
     expect(scoreHeadline('A surprise order for the company')).toBe(0);
-    expect(scoreHeadline('The advertising line rose sharply')).toBe(0);
+    expect(scoreHeadline('The fallacy of the argument')).toBe(0);
+    expect(scoreHeadline('Floss is sold in supermarkets')).toBe(0);
   });
 
-  it('halves the weight of a negated term', () => {
-    const negated = scoreHeadline('Company did not post a loss');
-    expect(negated).toBeLessThanOrEqual(0);
+  it('reads a past-tense move, which used to be missing entirely', () => {
+    // "falls" was in the list and "fell" was not, so a real headline reading
+    // "fell 25% this year" scored exactly zero.
+    expect(scoreHeadline('Reliance Industries fell 25% this year')).toBeLessThan(0);
+  });
+
+  /**
+   * The bare words were read backwards on headlines where they occur. "record
+   * low" is bad news and "cuts costs" is good, and scoring the word rather than
+   * what it modifies got every one of these the wrong way round.
+   */
+  it('reads a word by what it modifies, not by the word alone', () => {
+    for (const [headline, expected] of [
+      ['Company posts record low profit of Rs 12 cr', -1],
+      ['Falls to a record low', -1],
+      ['Board announces a dividend cut', -1],
+      ['Company loses three large orders in Q2', -1],
+      ['Company cuts costs by 20% and lifts margin', 1],
+      ['Company slashes debt and turns debt free', 1],
+      ['Record highs in revenue', 1],
+      ['Company raises dividend for the ninth year', 1],
+    ] as const) {
+      expect(Math.sign(scoreHeadline(headline)), headline).toBe(expected);
+    }
+  });
+
+  it('does not count a word twice when a phrase around it already scored', () => {
+    // "record low profit" is one negative phrase and one positive word. Counting
+    // "record" again as a positive would land this above zero.
+    expect(scoreHeadline('Profit falls to a record low')).toBeLessThan(0);
+  });
+
+  it('flips a negated term instead of discounting it', () => {
+    // Halving it left "reports no loss" at -0.5, so a company reporting it had
+    // lost nothing read as half-negative.
+    expect(scoreHeadline('Company reports no loss for the third quarter')).toBeGreaterThan(0);
+    expect(scoreHeadline('Company did not post a loss')).toBeGreaterThan(0);
+    expect(scoreHeadline('Not a profit warning, company says')).toBeGreaterThan(0);
   });
 
   it('returns zero for a headline with no listed terms', () => {
@@ -138,6 +175,78 @@ describe('summariseTone', () => {
     const reading = summariseTone([0.6, 0.5, 0.7, 0.4, 0.6], 5);
     expect(reading.tone).toBe('positive');
     expect(reading.articleCount).toBe(5);
+  });
+
+  /**
+   * The measured defect. On a real feed seven of eight headlines scored exactly
+   * zero, because an appointment, a filing and a bond issue carry no
+   * directional language. Averaging those in alongside one real headline pinned
+   * the mean near zero and reported neutral, which read as "the coverage was
+   * balanced" when nothing had been measured.
+   */
+  it('reads neutral, and says why, when too few headlines carry a direction', () => {
+    const reading = summariseTone([0, 0, 0, 0, 0, 0, -1, 0], 8);
+    expect(reading.tone).toBe('neutral');
+    expect(reading.score).toBe(0);
+    expect(reading.thin).toBe(true);
+    expect(reading.note).toMatch(/1 of 8/);
+    expect(reading.note).toMatch(/not a balanced news picture/i);
+  });
+
+  /**
+   * The share is the wrong denominator, because a feed pads itself with
+   * "Share Price Live Updates" and "Prediction for Tomorrow" columns that
+   * carry no direction. Three negative headlines out of eight was 37% and read
+   * as no signal at all, on a feed whose headlines were "shares hit a 6-year
+   * low", "stock crash" and "shares fall 5% in 5 sessions".
+   */
+  it('calls a tone when three headlines point the same way, out of eight', () => {
+    const sixYearLow = [0, -1, 0, 0, 0, -1, 0, -1];
+    const reading = summariseTone(sixYearLow, 8);
+    expect(reading.tone).toBe('negative');
+    expect(reading.thin).toBe(false);
+  });
+
+  it('still refuses to call a tone on two', () => {
+    const reading = summariseTone([0, -1, 0, 0, 0, 0, -1, 0], 8);
+    expect(reading.tone).toBe('neutral');
+    expect(reading.thin).toBe(true);
+  });
+
+  /**
+   * "Neutral" has two causes and a reader cannot tell them apart from the word.
+   * One is a balanced news picture; the other is that nothing was measured.
+   */
+  it('marks a genuinely balanced read as not thin', () => {
+    expect(summariseTone([0.8, -0.8, 0.9, -0.9, 0.7, -0.7, 0.8, -0.8], 8).thin).toBe(false);
+    expect(summariseTone([0.6, 0.5, 0.7, 0.4, 0.6], 5).thin).toBe(false);
+    expect(summariseTone([], 0).thin).toBe(false);
+    expect(summariseTone([0.6], 1).thin).toBe(false);
+  });
+
+  it('reads neutral rather than dividing by nothing when no headline scored', () => {
+    const reading = summariseTone([0, 0, 0, 0, 0], 5);
+    expect(reading.tone).toBe('neutral');
+    expect(reading.score).toBe(0);
+  });
+
+  it('still calls a tone when the headlines do carry a direction', () => {
+    const positive = summariseTone([0, 1, 0, 1, 1, 0, 1, 1], 8);
+    expect(positive.tone).toBe('positive');
+
+    const negative = summariseTone([-1, 0, -1, -1, 0, -1, 0, -1], 8);
+    expect(negative.tone).toBe('negative');
+  });
+
+  it('reads a multi-period low or high, not just a record one', () => {
+    for (const headline of [
+      'Infosys shares hit 6-year low intraday',
+      'Stock falls to a 52-week low on weak demand',
+      'Shares touch a 3-month low as demand slows',
+    ]) {
+      expect(Math.sign(scoreHeadline(headline)), headline).toBe(-1);
+    }
+    expect(Math.sign(scoreHeadline('Stock climbs to a 52-week high'))).toBe(1);
   });
 
   it('shrinks the score toward zero when the sample is at the threshold', () => {
