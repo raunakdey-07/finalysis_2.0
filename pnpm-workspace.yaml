@@ -1,17 +1,31 @@
-# pnpm build-script allowlist.
+# pnpm build-script allow-list.
 #
-# esbuild, sharp and unrs-resolver all ship prebuilt binaries through optional
-# platform packages, so their postinstall scripts are redundant here and pnpm
-# skips them by default. Listing them keeps that explicit instead of implicit,
-# and stops the warning appearing on every install.
+# esbuild, sharp and unrs-resolver ship prebuilt binaries through optional
+# platform packages, so their postinstall scripts are redundant and pnpm skips
+# them by default, printing a warning on every install. Listing them makes that
+# explicit, silences the warning, and keeps a future reinstall working if the
+# prebuilt binaries ever go missing.
 #
-# sharp is a production dependency of next; unrs-resolver backs the TypeScript
-# import resolver that `pnpm lint` uses. If any of them ever needs its script
-# run, it is now allowed to.
+# sharp is a production dependency of next. unrs-resolver backs the TypeScript
+# import resolver that `pnpm lint` uses. esbuild backs the transform pipeline
+# vitest uses. If any of them ever needs its script to run, it is allowed to.
 #
-# Note: pnpm 11 replaces this field with `allowBuilds`, and a workspace
-# migrated on a major bump can keep this key looking active while it is silently
-# ignored. Revisit it when pnpm itself is upgraded.
+# A note on the separate warning you may see locally:
+#
+#   pnpm is running through Node.js because the script that installs its
+#   native binary was skipped.
+#
+# That is not this repository. It comes from a half-finished pnpm self-install
+# in the user's global pnpm directory, and no setting in this file or in a
+# .npmrc can suppress it, because the shim that prints it runs before pnpm
+# parses any configuration. pnpm is deliberately absent from the list below:
+# it is not a dependency of this project, so listing it would claim to fix
+# something it cannot. The repair belongs to the local pnpm install, which is
+# `pnpm self-update`, and is a change to the machine rather than to the repo.
+#
+# pnpm 11 replaces this field with `allowBuilds`, and a workspace migrated on a
+# major bump can keep this key looking active while it is silently ignored.
+# Revisit it when pnpm itself is upgraded.
 onlyBuiltDependencies:
   - esbuild
   - sharp
