@@ -66,6 +66,34 @@ body {
 }
 
 /*
+ * The type scale, in order. Six sizes, and nothing outside them.
+ *
+ * The page grew a tenth and a half of one-off sizes that all meant roughly
+ * "small": the wordmark sat at 11px while the section labels it visually rhymes
+ * with sat at 12px, and the same "?" control rendered its glyph at 11px in one
+ * variant and 12px in the other, so the glyph beside a card score was a
+ * different size from the glyph beside the metric row under it.
+ *
+ * Ranking is by role, and the point of the order is that nothing subordinate
+ * outranks anything above it:
+ *
+ *   30  h1, the company name            text-3xl, 24px on small screens
+ *   24  the readings: screening verdict and each card's score
+ *   18  a state that stands alone: not scored, nothing loaded, a dialog title
+ *   16  a card title
+ *   14  body copy, and the numerals beside a score
+ *   12  captions, metadata, and the uppercase section labels
+ *
+ * The score was 36px, which made a number inside one card the largest thing on
+ * the page, above both the company name and the verdict it is one input to. The
+ * verdict and the card scores are now the same size, because they are the same
+ * kind of thing: a reading drawn from figures.
+ *
+ * Reach for a step on this ladder rather than a new number. If a role genuinely
+ * does not fit it, the scale is what should change, not the exception.
+ */
+
+/*
  * Skeletons and hover transitions are decoration. When motion is not wanted,
  * the information must still arrive, so the pulse stops rather than the
  * element disappearing.

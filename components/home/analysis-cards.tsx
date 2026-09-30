@@ -30,7 +30,7 @@ function Card({
     <section className={`border-t-4 bg-white p-5 shadow-sm ${topRule ?? "border-t-stone-200"}`}>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-medium text-stone-600">{title}</h3>
+          <h3 className="text-base font-medium text-stone-600">{title}</h3>
           <p className="mt-1 text-xs text-stone-500">{subtitle}</p>
         </div>
         {style ? (
@@ -108,9 +108,9 @@ function ReadingBody({
 
   return (
     <>
-      <div className="mt-4 flex items-baseline gap-1">
-        <span className={`text-4xl font-semibold tabular-nums ${style.text}`}>{score}</span>
-        <span className="text-base font-medium text-stone-500">/100</span>
+      <div className="mt-4 flex items-baseline gap-1.5">
+        <span className={`text-2xl font-semibold tabular-nums ${style.text}`}>{score}</span>
+        <span className="text-sm font-medium text-stone-500">/100</span>
         <ScoreExplanation metric={explain} lines={lines} />
       </div>
 
@@ -189,7 +189,7 @@ function RecentSignalsCard({
   return (
     <Card
       title="Recent signals"
-      subtitle="Price position, and news coverage"
+      subtitle="Price position, news coverage and sentiment"
       topRule={signalStyle.rule}
       state={reading.state ? { label: signalLabel, text: signalStyle.text } : undefined}
     >

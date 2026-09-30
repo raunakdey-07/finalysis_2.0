@@ -163,7 +163,10 @@ function ExplanationPopover({
           "inline-flex shrink-0 items-center justify-center rounded-full text-stone-600",
           "outline-none transition hover:text-stone-900",
           "focus-visible:ring-2 focus-visible:ring-stone-700 focus-visible:ring-offset-2",
-          variant === "score" ? "h-6 w-6 text-xs" : "-ml-1 h-6 w-6 text-[11px]"
+          "h-6 w-6 text-xs",
+          // Only the position differs. The two sizes this used to carry put the
+          // same glyph at a different size beside itself, inside the same card.
+          variant === "score" ? null : "-ml-1"
         )}
       >
         <span aria-hidden="true">?</span>

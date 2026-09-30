@@ -581,7 +581,7 @@ export default function Page() {
       <div className="min-h-screen bg-stone-50 text-stone-900">
         <div className="mx-auto w-full max-w-4xl px-4 py-8 sm:px-6 sm:py-12">
           <header className="mb-8 border-b border-stone-200 pb-6">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-stone-500">
+            <p className="text-xs font-semibold uppercase tracking-widest text-stone-500">
               Finalysis
             </p>
             {/*
@@ -597,14 +597,9 @@ export default function Page() {
           </header>
 
           <section aria-labelledby="search-heading" className="mb-8">
-            <h2
-              id="search-heading"
-              className="mb-3 flex items-center gap-4 text-xs font-medium uppercase tracking-widest text-stone-500"
-            >
-              <span className="h-px flex-1 bg-stone-200" aria-hidden="true" />
-              <span>Find a company</span>
-              <span className="h-px flex-1 bg-stone-200" aria-hidden="true" />
-            </h2>
+            <SectionHeading id="search-heading" className="mb-3">
+              Find a company
+            </SectionHeading>
 
             <form onSubmit={handleSearchSubmit} className="flex items-start gap-2">
               <div className="relative flex-1">
