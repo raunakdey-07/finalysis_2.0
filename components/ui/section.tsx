@@ -6,6 +6,8 @@
  * drifted apart. They live here so they cannot.
  */
 
+import { cn } from "@/lib/utils/cn";
+
 /**
  * A section label on a rule, with the section's content below it.
  *
@@ -24,7 +26,10 @@ export function SectionHeading({
   return (
     <h2
       id={id}
-      className={`mb-5 flex items-center gap-4 text-xs font-medium uppercase tracking-widest text-stone-500 ${className}`}
+      className={cn(
+        "mb-5 flex items-center gap-4 text-xs font-medium uppercase tracking-widest text-stone-500",
+        className
+      )}
     >
       <span className="h-px flex-1 bg-stone-200" aria-hidden="true" />
       <span>{children}</span>
