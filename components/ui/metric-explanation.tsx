@@ -196,11 +196,18 @@ function ExplanationPopover({
           {lines && lines.length > 0 ? (
             <span className="mt-2 block border-t border-stone-200 pt-2">
               <span className="mb-1 block font-medium text-stone-800">{heading}</span>
-              <ul className="list-disc space-y-1 pl-4">
-                {lines.map((line) => (
-                  <li key={line}>{line}</li>
-                ))}
-              </ul>
+              {lines.length === 1 ? (
+                // One point under a heading is a sentence. The bullet was the
+                // only thing on the line, and a lone disc reads as a truncated
+                // list rather than as a complete thought.
+                <span className="block">{lines[0]}</span>
+              ) : (
+                <ul className="list-disc space-y-1 pl-4">
+                  {lines.map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
+              )}
             </span>
           ) : null}
         </span>
