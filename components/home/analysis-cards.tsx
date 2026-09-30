@@ -170,28 +170,28 @@ function RecentSignalsCard({
   );
 
   // Same shape as the two screening cards: the rule, the label, the score and
-  // the bar all move together. The reading differs in its vocabulary, Rising /
-  // Mixed / Falling, not in its construction.
+  // the bar all move together. The reading differs in its vocabulary, which
+  // describes how price and coverage have behaved rather than passing a
+  // judgement on the company, and in its construction.
   const signalStyle =
-    reading.state === "rising"
+    reading.state === "buoyant"
       ? { text: "text-accent-ink", bar: "bg-accent", rule: "border-t-accent" }
-      : reading.state === "falling"
+      : reading.state === "soft"
         ? { text: "text-caution-ink", bar: "bg-caution", rule: "border-t-caution" }
         : { text: "text-stone-700", bar: "bg-stone-500", rule: "border-t-stone-400" };
+
+  // Behaviour, not location. A stock resting on its 52-week low while flat and
+  // a one in freefall score alike, so the label cannot claim either is falling
+  // or is near its low. The popover carries where the price actually sits.
+  const signalLabel =
+    reading.state === "buoyant" ? "Buoyant" : reading.state === "soft" ? "Soft" : "Steady";
 
   return (
     <Card
       title="Recent signals"
       subtitle="Price position, and news coverage"
       topRule={signalStyle.rule}
-      state={
-        reading.state
-          ? {
-              label: reading.state.charAt(0).toUpperCase() + reading.state.slice(1),
-              text: signalStyle.text,
-            }
-          : undefined
-      }
+      state={reading.state ? { label: signalLabel, text: signalStyle.text } : undefined}
     >
       {loading ? (
         <p className="mt-4 text-sm text-stone-500" role="status">
@@ -204,7 +204,7 @@ function RecentSignalsCard({
             explain="recentSignals"
             style={signalStyle}
             missing={[]}
-            note={`Built from ${reading.available} of 3 inputs.`}
+            note={`Built from ${reading.available} of 4 inputs.`}
             lines={[
               ...reading.notes,
               "This reads where the price sits and what the headlines say. It is not a measure of company quality, and a high number is not a good investment.",
