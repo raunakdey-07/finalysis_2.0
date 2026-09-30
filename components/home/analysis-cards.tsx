@@ -6,6 +6,7 @@ import type { StockFundamentals, StockPrice } from "@/types";
 import { formatMultiple, formatPercent, formatRupees, formatSignedPercent } from "@/lib/format";
 import { MetricExplanation, ScoreExplanation } from "@/components/ui/metric-explanation";
 import { styleFor } from "./score-style";
+import { decideFigureCards } from "./figure-card-state";
 import type { EducationKey } from "@/lib/education";
 
 function Card({
@@ -132,7 +133,18 @@ function ScoreBody({
   );
 }
 
+/**
+ * How far the news request got.
+ *
+ * `empty` and `unavailable` look identical if you only count articles, and the
+ * difference matters: one says the provider answered and had nothing, the other
+ * says the provider never answered. Collapsing them claims a retrieval that did
+ * not happen.
+ */
+export type NewsState = 'loading' | 'unavailable' | 'empty' | 'ok';
+
 export type NewsSummary = {
+  state: Exclude<NewsState, 'loading'>;
   tone: "positive" | "negative" | "neutral" | "unknown";
   articleCount: number;
 };
@@ -151,6 +163,7 @@ function RecentSignalsCard({
   const signals = readMarketSignals(price);
   const change = signals.dailyChangePercent;
   const direction = change === null ? null : change > 0 ? "up" : change < 0 ? "down" : "flat";
+  const newsMissing = news !== null && (news.state === "unavailable" || news.state === "empty");
 
   return (
     <Card title="Recent signals" subtitle="Price today, and news coverage" topRule="border-t-accent">
@@ -181,22 +194,29 @@ function RecentSignalsCard({
                 unknownSymbol
                   ? "Not requested"
                   : news === null
-                    ? "Not checked"
-                    : news.articleCount === 0
+                    ? loading
+                      ? "Looking…"
+                      : "Not retrieved"
+                    : news.state !== "ok"
                       ? "Not retrieved"
                       : news.tone === "unknown"
                         ? "Not enough articles"
                         : news.tone.charAt(0).toUpperCase() + news.tone.slice(1)
               }
             />
-            <MetricRow label="Articles found" value={news ? String(news.articleCount) : "—"} />
+            <MetricRow
+              label="Articles found"
+              value={news?.state === "ok" ? String(news.articleCount) : "—"}
+            />
           </dl>
 
-          {news && news.tone === "unknown" ? (
+          {newsMissing ? (
             <p className="mt-3 text-xs leading-relaxed text-stone-600">
-              {news.articleCount > 0
-                ? `Only ${news.articleCount} headline${news.articleCount === 1 ? "" : "s"} matched this company, which is too few to call a tone. That is a thin sample, not a neutral reading.`
-                : "No headlines were retrieved, so no tone is reported. That is missing data, not a neutral reading."}
+              {news!.state === "unavailable"
+                ? "The news source did not answer, so no tone is reported. That is a retrieval failure, not a neutral reading."
+                : news!.articleCount > 0
+                  ? `Only ${news!.articleCount} headline${news!.articleCount === 1 ? "" : "s"} matched this company, which is too few to call a tone. That is a thin sample, not a neutral reading.`
+                  : "No headlines were retrieved, so no tone is reported. That is missing data, not a neutral reading."}
             </p>
           ) : null}
         </>
@@ -220,31 +240,20 @@ export function AnalysisCards({
   loading: boolean;
   unknownSymbol: boolean;
 }) {
-  const businessQuality = metrics?.businessQuality;
-  const valuation = metrics?.valuation;
-  const qualityStyle = styleFor(businessQuality?.verdict ?? "unknown");
-  const valuationStyle = styleFor(valuation?.verdict ?? "unknown");
+  const decision = decideFigureCards({
+    loading,
+    fundamentalsPresent: Boolean(fundamentals),
+    unknownSymbol,
+    businessQuality: metrics?.businessQuality,
+    valuation: metrics?.valuation,
+  });
+
+  const qualityStyle = styleFor(decision.businessQuality?.verdict ?? "unknown");
+  const valuationStyle = styleFor(decision.valuation?.verdict ?? "unknown");
 
   /**
-   * One notice for the two score cards.
-   *
-   * Both used to render the identical sentence, which told a reader the same
-   * thing twice. Stated once above the grid it also explains the quiet
-   * placeholders inside the cards.
-   */
-  const sharedNotice = !loading && !fundamentals
-    ? unknownSymbol
-      ? "This ticker is outside the covered list, so no company figures were looked up."
-      : "Company figures were not retrieved, so neither score could be produced."
-    : null;
-
-  /**
-   * A dash, for both "still loading" and "nothing to show".
-   *
-   * The cards used to print a failure sentence while the request was still in
-   * flight, which asserted a failure before anything had failed, and then
-   * printed the same sentence a second time once the failure was real. The
-   * reason is stated once, above the grid.
+   * A dash, for both "still loading" and "nothing to show". The reason, when
+   * there is one, is stated once above the grid by the decision above.
    */
   const quietPlaceholder = (
     <p className="mt-4 text-lg font-semibold text-stone-400" aria-hidden="true">
@@ -254,22 +263,24 @@ export function AnalysisCards({
 
   return (
     <div className="mb-12">
-      {sharedNotice ? (
-        <p className="mb-4 text-sm leading-relaxed text-stone-600">{sharedNotice}</p>
+      {decision.notice ? (
+        <p className="mb-4 text-sm leading-relaxed text-stone-600">{decision.notice}</p>
       ) : null}
 
       <div className="grid gap-6 sm:grid-cols-3">
         <Card
           title="Business quality"
           subtitle="Returns on capital"
-          topRule={businessQuality ? qualityStyle.topRule : undefined}
-          style={businessQuality ? qualityStyle : undefined}
+          topRule={decision.businessQuality ? qualityStyle.topRule : undefined}
+          style={decision.businessQuality ? qualityStyle : undefined}
         >
-          {loading || !businessQuality ? (
-            quietPlaceholder
-          ) : (
+          {decision.businessQuality ? (
             <>
-              <ScoreBody score={businessQuality} explain="businessQuality" style={qualityStyle} />
+              <ScoreBody
+                score={decision.businessQuality}
+                explain="businessQuality"
+                style={qualityStyle}
+              />
               <dl className="mt-5 space-y-2.5 border-t border-stone-100 pt-4">
                 <MetricRow label="ROE" explain="roe" value={formatPercent(fundamentals?.roe)} />
                 <MetricRow label="ROCE" explain="roce" value={formatPercent(fundamentals?.roce)} />
@@ -280,20 +291,24 @@ export function AnalysisCards({
                 />
               </dl>
             </>
+          ) : (
+            quietPlaceholder
           )}
         </Card>
 
         <Card
           title="Valuation"
           subtitle="Price against earnings and net worth"
-          topRule={valuation ? valuationStyle.topRule : undefined}
-          style={valuation ? valuationStyle : undefined}
+          topRule={decision.valuation ? valuationStyle.topRule : undefined}
+          style={decision.valuation ? valuationStyle : undefined}
         >
-          {loading || !valuation ? (
-            quietPlaceholder
-          ) : (
+          {decision.valuation ? (
             <>
-              <ScoreBody score={valuation} explain="valuation" style={valuationStyle} />
+              <ScoreBody
+                score={decision.valuation}
+                explain="valuation"
+                style={valuationStyle}
+              />
               <dl className="mt-5 space-y-2.5 border-t border-stone-100 pt-4">
                 <MetricRow
                   label="P/E"
@@ -312,6 +327,8 @@ export function AnalysisCards({
                 />
               </dl>
             </>
+          ) : (
+            quietPlaceholder
           )}
         </Card>
 

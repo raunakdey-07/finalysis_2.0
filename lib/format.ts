@@ -160,9 +160,16 @@ const COMPACT = new Intl.NumberFormat('en-IN', {
 });
 
 /** Renders a nullable financial value, never substituting a zero for absence. */
+/**
+ * A rupee amount.
+ *
+ * Carries its own symbol. A row labelled "Book value" showing 418.00, next to
+ * a price of 1,190.50, leaves the reader guessing which number is money in
+ * rupees and which is a ratio.
+ */
 export function formatRupees(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return '—';
-  return BARE.format(value);
+  return `₹${BARE.format(value)}`;
 }
 
 /** A ratio such as ROE, carrying its own unit so the value is never read bare. */

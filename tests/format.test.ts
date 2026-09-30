@@ -83,6 +83,12 @@ describe('number formatting', () => {
     expect(formatRupees(1197.6)).toMatch(/1,197\.60/);
   });
 
+  it('always states the unit, so an amount is never read as a bare number', () => {
+    expect(formatRupees(418)).toBe('₹418.00');
+    expect(formatRupees(1197.6)).toBe('₹1,197.60');
+    expect(formatRupees(-3.26)).toBe('₹-3.26');
+  });
+
   it('shows an absent figure as a dash, never as zero', () => {
     for (const format of [formatRupees, formatPercent, formatMultiple, formatSignedPercent]) {
       expect(format(null), 'null').toBe('—');
@@ -93,7 +99,7 @@ describe('number formatting', () => {
 
   it('keeps a genuine zero visible, and never hides a unit', () => {
     expect(formatPercent(0)).toBe('0.00%');
-    expect(formatRupees(0)).toBe('0.00');
+    expect(formatRupees(0)).toBe('₹0.00');
   });
 
   it('always carries the unit on a ratio, so a bare number is never ambiguous', () => {

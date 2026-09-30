@@ -134,23 +134,18 @@ function ExplanationPopover({
     if (open) panelRef.current?.focus();
   }, [open]);
 
-  // Hover is a convenience on precise pointers only; touch and keyboard rely on
-  // the click, which keeps the target a dependable 24px.
-  const supportsHover = () =>
-    typeof window !== "undefined" && window.matchMedia("(pointer: fine)").matches;
-
+  // Hover is deliberately not a trigger.
+  //
+  // The panel is wider than the rows below it and is click-through, so a
+  // hover-opened panel is a thing you can see but cannot reach: moving the
+  // pointer towards it lands on whatever is underneath, which closes it. That
+  // also makes it fail WCAG 2.1.1's content-on-hover expectations, since the
+  // content is not hoverable. Click only behaves identically on mouse and
+  // touch, and lets a click on the next row's "?" land on that control.
   const close = useCallback(() => setOpen(false), [setOpen]);
 
-  const hoverHandlers = supportsHover()
-    ? { onMouseEnter: () => setOpen(true), onMouseLeave: () => close() }
-    : {};
-
   return (
-    <span
-      className={cn("relative inline-flex items-start", className)}
-      ref={wrapperRef}
-      {...hoverHandlers}
-    >
+    <span className={cn("relative inline-flex items-start", className)} ref={wrapperRef}>
       <button
         ref={triggerRef}
         type="button"
@@ -179,11 +174,11 @@ function ExplanationPopover({
           aria-label={title}
           tabIndex={-1}
           className={cn(
-            // Click-through. The panel is wider and taller than the rows beneath
-            // it, so making it opaque to the pointer meant the next metric's
-            // "?" could not be clicked while this one was open. Reference text
-            // behind a "?" does not need to be selectable, and a click that
-            // lands on it now reaches the control underneath.
+            // Click-through on purpose. The panel is wider and taller than the
+            // rows beneath it, so making it opaque to the pointer meant the next
+            // metric's "?" could not be clicked while this one was open. A click
+            // that lands on it now reaches the control underneath, and the
+            // outside-pointerdown handler swaps the panel.
             "pointer-events-none absolute left-0 top-full z-30 mt-1",
             "w-[min(20rem,calc(100vw-1.5rem))] select-none",
             "rounded-md border border-stone-300 bg-white p-3 text-xs leading-relaxed",

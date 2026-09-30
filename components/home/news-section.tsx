@@ -10,17 +10,20 @@ import { LinkList, Panel, SectionHeading } from "@/components/ui/section";
  * The tone reading lives in the Recent signals card, which is the part of the
  * page that summarises a position. This section does the one job it can do
  * well: show the articles, with their publisher, their age, and when the list
- * was refreshed.
+ * was refreshed. It also distinguishes an empty result from a failed one, so
+ * neither claims a retrieval that did not happen.
  */
 export function NewsSection({
   items,
   provenance,
   loading,
+  state,
   unknownSymbol,
 }: {
   items: NewsItem[];
   provenance: Provenance | null;
   loading: boolean;
+  state: 'loading' | 'unavailable' | 'empty' | 'ok';
   unknownSymbol: boolean;
 }) {
   const articles = items.filter((item) => !item.synthetic);
@@ -81,7 +84,9 @@ export function NewsSection({
             <p className="py-2 text-sm leading-relaxed text-stone-700">
               {unknownSymbol
                 ? "No headlines were requested, because this ticker is outside the covered list."
-                : "No articles were retrieved for this company."}
+                : state === "unavailable"
+                  ? "The news source did not answer, so no headlines could be retrieved."
+                  : "No articles were retrieved for this company."}
             </p>
             {links.length > 0 && !unknownSymbol ? (
               <p className="mt-2 text-xs leading-relaxed text-stone-600">

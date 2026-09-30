@@ -584,12 +584,15 @@ export default function Page() {
             <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-stone-500">
               Finalysis
             </p>
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-stone-800 sm:text-3xl">
-              Read an NSE company with published numbers
-            </h1>
+            {/*
+              A tagline, not the page's subject. The company below is the subject,
+              so the outline starts at the wordmark and runs h1 company, h2
+              section, h3 card, instead of a generic sentence sitting at h1 and
+              the company name level-peering with a 12px divider label.
+            */}
             <p className="mt-2 max-w-2xl text-sm leading-relaxed text-stone-600">
-              Prices, published company figures, and recent headlines for a fixed set of NSE
-              tickers. Every number on the page says where it came from and when it was true.
+              Read an NSE company from published numbers. Prices, company figures, and recent
+              headlines, where every figure says where it came from and when it was true.
             </p>
           </header>
 
@@ -769,12 +772,12 @@ export default function Page() {
 
           <main id="main">
             <section aria-labelledby="company-heading" className="mb-8">
-              <h2
+              <h1
                 id="company-heading"
                 className="wrap-break-word text-2xl font-semibold tracking-tight text-stone-900 sm:text-3xl"
               >
                 {fundamentals?.companyName ?? toApiSymbol(symbol)}
-              </h2>
+              </h1>
 
               {loading ? (
                 <p className="mt-2 text-sm text-stone-500" role="status">
@@ -932,8 +935,16 @@ export default function Page() {
                 unknownSymbol={unknownSymbol}
                 news={
                   news
-                    ? { tone: news.tone.tone, articleCount: news.tone.articleCount }
-                    : null
+                    ? {
+                        state: news.items.length > 0 ? ("ok" as const) : ("empty" as const),
+                        tone: news.tone.tone,
+                        articleCount: news.tone.articleCount,
+                      }
+                    : {
+                        state: "unavailable" as const,
+                        tone: "unknown" as const,
+                        articleCount: 0,
+                      }
                 }
                 loading={loading}
               />
@@ -943,6 +954,15 @@ export default function Page() {
               items={news?.items ?? []}
               provenance={newsProvenance}
               loading={loading}
+              state={
+                loading
+                  ? "loading"
+                  : news
+                    ? news.items.length > 0
+                      ? "ok"
+                      : "empty"
+                    : "unavailable"
+              }
               unknownSymbol={unknownSymbol}
             />
 
