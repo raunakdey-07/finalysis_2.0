@@ -14,6 +14,12 @@ export interface StockPrice {
   changePercent: number | null;
   volume: number | null;
   previousClose: number | null;
+  /**
+   * Change across the whole window the provider returned, which is a handful
+   * of sessions. One session is mostly noise; this is the first movement
+   * signal the app has, and the series is already in the parsed response.
+   */
+  recentChangePercent: number | null;
   dayOpen: number | null;
   dayHigh: number | null;
   dayLow: number | null;

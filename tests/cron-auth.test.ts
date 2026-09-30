@@ -19,6 +19,7 @@ vi.mock('@/lib/nse', () => ({
         price: 100,
         change: 1,
         changePercent: 1,
+        recentChangePercent: 2,
         volume: 10,
         previousClose: 99,
         dayOpen: 99,

@@ -205,6 +205,7 @@ describe('readMarketSignals', () => {
     price: 100,
     change: 1,
     changePercent: 1,
+    recentChangePercent: 2,
     volume: 1000,
     previousClose: 99,
     dayOpen: 99,

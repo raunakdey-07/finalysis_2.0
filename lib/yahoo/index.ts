@@ -110,6 +110,25 @@ function previousSessionClose(series: (number | null)[] | undefined): number | n
   return populated.length >= 2 ? populated[populated.length - 2].value : null;
 }
 
+/**
+ * Change across every populated close in the returned window.
+ *
+ * Reported separately from the session move because one session is mostly
+ * noise, and it is the only movement signal available: the chart response
+ * already carries the series, and it was read for the previous close and then
+ * discarded.
+ */
+function windowChangePercent(series: (number | null)[] | undefined): number | null {
+  if (!series) return null;
+
+  const populated = series.filter(isPositiveNumber);
+  if (populated.length < 2) return null;
+
+  const first = populated[0];
+  const last = populated[populated.length - 1];
+  return ((last - first) / first) * 100;
+}
+
 /** Convert a provider percentage against `price` into the absolute move. */
 function absoluteFromPercent(price: number, percent: number): number {
   const denominator = 100 + percent;
@@ -176,6 +195,7 @@ export function parseYahooChartResult(
     changePercent,
     volume: isPositiveNumber(meta?.regularMarketVolume) ? meta.regularMarketVolume : null,
     previousClose,
+    recentChangePercent: windowChangePercent(series?.close),
     dayOpen: isPositiveNumber(meta?.regularMarketOpen)
       ? meta.regularMarketOpen
       : atLastIndex(series?.open),

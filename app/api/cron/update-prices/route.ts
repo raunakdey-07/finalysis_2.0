@@ -53,6 +53,7 @@ function withoutFreshness(price: StockPrice): StoredQuote {
     changePercent: price.changePercent,
     volume: price.volume,
     previousClose: price.previousClose,
+    recentChangePercent: price.recentChangePercent,
     dayOpen: price.dayOpen,
     dayHigh: price.dayHigh,
     dayLow: price.dayLow,
