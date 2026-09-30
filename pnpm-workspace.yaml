@@ -1,0 +1,18 @@
+# pnpm build-script allowlist.
+#
+# esbuild, sharp and unrs-resolver all ship prebuilt binaries through optional
+# platform packages, so their postinstall scripts are redundant here and pnpm
+# skips them by default. Listing them keeps that explicit instead of implicit,
+# and stops the warning appearing on every install.
+#
+# sharp is a production dependency of next; unrs-resolver backs the TypeScript
+# import resolver that `pnpm lint` uses. If any of them ever needs its script
+# run, it is now allowed to.
+#
+# Note: pnpm 11 replaces this field with `allowBuilds`, and a workspace
+# migrated on a major bump can keep this key looking active while it is silently
+# ignored. Revisit it when pnpm itself is upgraded.
+onlyBuiltDependencies:
+  - esbuild
+  - sharp
+  - unrs-resolver
