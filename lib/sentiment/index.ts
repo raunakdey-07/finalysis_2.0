@@ -327,6 +327,8 @@ export interface ToneReading {
   /** -1 to 1, shrunk toward zero when the sample is small. */
   score: number;
   articleCount: number;
+  /** How many of the retrieved headlines carried a direction at all. */
+  directionalCount: number;
   /**
    * The tone is neutral because too few headlines carried a direction, rather
    * than because the coverage pointed both ways. A reader cannot tell those
@@ -357,6 +359,7 @@ export function summariseTone(scores: number[], articleCount: number): ToneReadi
       tone: 'unknown',
       score: 0,
       articleCount: 0,
+      directionalCount: 0,
       thin: false,
       note: 'No articles were retrieved, so no news tone is reported. That is missing data, not a neutral reading.',
     };
@@ -367,6 +370,7 @@ export function summariseTone(scores: number[], articleCount: number): ToneReadi
       tone: 'unknown',
       score: 0,
       articleCount,
+      directionalCount: scores.filter((score) => score !== 0).length,
       thin: false,
       note: `Only ${articleCount} article${articleCount === 1 ? '' : 's'} matched this company. That is too few to call a tone.`,
     };
@@ -381,6 +385,7 @@ export function summariseTone(scores: number[], articleCount: number): ToneReadi
       tone: 'neutral',
       score: 0,
       articleCount,
+      directionalCount: directional.length,
       thin: true,
       note: `Only ${directional.length} of ${articleCount} retrieved headlines carried a direction, which is too few to call a tone. That is thin coverage, not a balanced news picture.`,
     };
@@ -398,6 +403,7 @@ export function summariseTone(scores: number[], articleCount: number): ToneReadi
     tone,
     score: adjusted,
     articleCount,
+    directionalCount: directional.length,
     thin: false,
     note: `Tone is ${tone} across ${directional.length} of ${articleCount} retrieved headlines that carried a direction.`,
   };

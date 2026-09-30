@@ -189,6 +189,7 @@ describe('summariseTone', () => {
     expect(reading.tone).toBe('neutral');
     expect(reading.score).toBe(0);
     expect(reading.thin).toBe(true);
+    expect(reading.directionalCount).toBe(1);
     expect(reading.note).toMatch(/1 of 8/);
     expect(reading.note).toMatch(/not a balanced news picture/i);
   });
@@ -247,6 +248,13 @@ describe('summariseTone', () => {
       expect(Math.sign(scoreHeadline(headline)), headline).toBe(-1);
     }
     expect(Math.sign(scoreHeadline('Stock climbs to a 52-week high'))).toBe(1);
+  });
+
+  it('reports how many headlines carried a direction on every reading', () => {
+    expect(summariseTone([0, 0, 0, 0, 0, 0, -1, 0], 8).directionalCount).toBe(1);
+    expect(summariseTone([0, 1, 0, 1, 1, 0, 1, 1], 8).directionalCount).toBe(5);
+    expect(summariseTone([], 0).directionalCount).toBe(0);
+    expect(summariseTone([0.6], 1).directionalCount).toBe(1);
   });
 
   it('shrinks the score toward zero when the sample is at the threshold', () => {

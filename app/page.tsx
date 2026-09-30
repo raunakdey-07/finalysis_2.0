@@ -935,6 +935,7 @@ export default function Page() {
                         tone: news.tone.tone,
                         articleCount: news.tone.articleCount,
                         toneThin: news.tone.thin,
+                        directionalCount: news.tone.directionalCount,
                       }
                     : {
                         state: "unavailable" as const,

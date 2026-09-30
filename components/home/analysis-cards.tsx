@@ -49,11 +49,14 @@ function MetricRow({
   value,
   explain,
   tone,
+  lines,
 }: {
   label: string;
   value: string;
   explain?: EducationKey;
   tone?: "up" | "down" | "flat";
+  /** Company-specific lines for this row's own explanation. */
+  lines?: string[];
 }) {
   const toneClass =
     tone === "up" ? "text-accent-ink" : tone === "down" ? "text-caution-ink" : "text-stone-800";
@@ -62,7 +65,7 @@ function MetricRow({
     <div className="flex items-center justify-between gap-3 text-sm">
       <dt className="flex items-center text-stone-600">
         {label}
-        {explain ? <MetricExplanation metric={explain} /> : null}
+        {explain ? <MetricExplanation metric={explain} lines={lines} /> : null}
       </dt>
       <dd className={`font-medium tabular-nums ${tone ? toneClass : "text-stone-800"}`}>{value}</dd>
     </div>
@@ -146,6 +149,8 @@ export type NewsSummary = {
   articleCount: number;
   /** The tone reads neutral because too few headlines carried a direction. */
   toneThin?: boolean;
+  /** How many retrieved headlines carried a direction. */
+  directionalCount?: number;
 };
 
 function RecentSignalsCard({
@@ -223,6 +228,17 @@ function RecentSignalsCard({
             <MetricRow
               label="News tone"
               explain="recentSignals"
+              // A neutral reading has two very different causes and the reader
+              // cannot tell them apart from the word: the coverage pointed both
+              // ways, or nothing in it pointed at all. The second is the commoner
+              // and belongs with the row it qualifies, not under the card.
+              lines={
+                news?.state === "ok" && news.tone === "neutral" && news.toneThin
+                  ? [
+                      `Only ${news.directionalCount ?? 0} of the ${news.articleCount} retrieved headlines carried a direction, which is too few to call a tone. Neutral here means thin coverage, not a balanced news picture.`,
+                    ]
+                  : undefined
+              }
               value={
                 unknownSymbol
                   ? "Not requested"
@@ -251,14 +267,6 @@ function RecentSignalsCard({
                 : news!.articleCount > 0
                   ? `Only ${news!.articleCount} headline${news!.articleCount === 1 ? "" : "s"} matched this company, which is too few to call a tone. That is a thin sample, not a neutral reading.`
                   : "No headlines were retrieved, so no tone is reported. That is missing data, not a neutral reading."}
-            </p>
-          ) : /* A neutral reading has two very different causes, and the reader
-              cannot tell them apart from the word. */ news?.state === "ok" &&
-            news.tone === "neutral" &&
-            news.toneThin ? (
-            <p className="mt-3 text-xs leading-relaxed text-stone-600">
-              The headlines were retrieved, but too few of them carried a direction to call a
-              tone. Neutral here means thin coverage, not a balanced news picture.
             </p>
           ) : null}
         </>
