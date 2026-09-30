@@ -144,6 +144,8 @@ export type NewsSummary = {
   state: Exclude<NewsState, 'loading'>;
   tone: "positive" | "negative" | "neutral" | "unknown";
   articleCount: number;
+  /** The tone reads neutral because too few headlines carried a direction. */
+  toneThin?: boolean;
 };
 
 function RecentSignalsCard({
@@ -249,6 +251,14 @@ function RecentSignalsCard({
                 : news!.articleCount > 0
                   ? `Only ${news!.articleCount} headline${news!.articleCount === 1 ? "" : "s"} matched this company, which is too few to call a tone. That is a thin sample, not a neutral reading.`
                   : "No headlines were retrieved, so no tone is reported. That is missing data, not a neutral reading."}
+            </p>
+          ) : /* A neutral reading has two very different causes, and the reader
+              cannot tell them apart from the word. */ news?.state === "ok" &&
+            news.tone === "neutral" &&
+            news.toneThin ? (
+            <p className="mt-3 text-xs leading-relaxed text-stone-600">
+              The headlines were retrieved, but too few of them carried a direction to call a
+              tone. Neutral here means thin coverage, not a balanced news picture.
             </p>
           ) : null}
         </>

@@ -114,7 +114,7 @@ const DEFINITIONS: Record<EducationKey, MetricDefinition> = {
     interpretation:
       'A higher number means the price is nearer the top of its 12-month range, or has been holding up. Read it as how the shares have behaved, not as a quality measure.',
     caveat:
-      'A company resting near its 52-week low scores low here and may be an excellent business. This is not comparable with the business-quality and valuation scores, and it is not a timing signal. No tone is reported at all when fewer than five articles matched.',
+      'A company resting near its 52-week low scores low here and may be an excellent business. This is not comparable with the business-quality and valuation scores, and it is not a timing signal. No tone is reported at all when fewer than five articles matched, and the tone reads neutral when too few of them carry a direction either way. Headline tone is a keyword reading, not an understanding of the news: it notices a regulator opens a probe, and it does not notice why.',
   },
   screeningVerdict: {
     key: 'screeningVerdict',

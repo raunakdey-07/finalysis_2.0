@@ -1,19 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { boundedInt, failure, guardRateLimit, guardSymbol } from '@/lib/api';
 import { logDetail } from '@/lib/errors';
-import { getNews, MAX_ARTICLES } from '@/lib/sentiment';
+import { getNews, MAX_ARTICLES, type ToneReading } from '@/lib/sentiment';
 import { buildResearchLinks } from '@/lib/research-links';
 import { getSymbolEntry } from '@/lib/symbol-resolver';
 import type { ApiResponse, NewsItem } from '@/types';
 
 export interface NewsPayload {
   items: NewsItem[];
-  tone: {
-    tone: 'positive' | 'negative' | 'neutral' | 'unknown';
-    score: number;
-    articleCount: number;
-    note: string;
-  };
+  /**
+   * The reading, not a copy of it. This shape was hand-written, so adding a
+   * field to the reading left the API still advertising the old one.
+   */
+  tone: ToneReading;
 }
 
 export async function GET(request: NextRequest) {

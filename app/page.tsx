@@ -934,6 +934,7 @@ export default function Page() {
                         state: news.items.length > 0 ? ("ok" as const) : ("empty" as const),
                         tone: news.tone.tone,
                         articleCount: news.tone.articleCount,
+                        toneThin: news.tone.thin,
                       }
                     : {
                         state: "unavailable" as const,
