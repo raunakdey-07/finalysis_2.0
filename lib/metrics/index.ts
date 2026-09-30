@@ -373,6 +373,115 @@ export function readMarketSignals(price: StockPrice | null): MarketSignals {
   };
 }
 
+/**
+ * Where the price sits in its twelve-month range, as a percentage from the
+ * 52-week low. A position, not a judgement: 90 means near the top of the range,
+ * which is not the same as good.
+ */
+function rangePosition(price: StockPrice | null): number | null {
+  if (!price) return null;
+  const { fiftyTwoWeekHigh, fiftyTwoWeekLow, price: current } = price;
+  if (fiftyTwoWeekHigh === null || fiftyTwoWeekLow === null) return null;
+  if (fiftyTwoWeekHigh <= fiftyTwoWeekLow) return null;
+
+  const position = ((current - fiftyTwoWeekLow) / (fiftyTwoWeekHigh - fiftyTwoWeekLow)) * 100;
+  return Math.max(0, Math.min(100, position));
+}
+
+/** A session move mapped onto the same 0-100 scale, around a flat day. */
+function sessionPosition(changePercent: number | null): number | null {
+  if (changePercent === null || !Number.isFinite(changePercent)) return null;
+  // A 5% session either way saturates the scale. Below that it is linear.
+  return Math.max(0, Math.min(100, 50 + changePercent * 10));
+}
+
+export type SignalsState = 'rising' | 'mixed' | 'falling';
+
+/**
+ * A market-position reading for the third card.
+ *
+ * This is deliberately not a quality score. It combines where the price sits in
+ * its twelve-month range, the session move, and the tone of retrieved headlines,
+ * and it is labelled Rising / Mixed / Falling rather than with the
+ * Favourable/Mixed/Cautious vocabulary the other two cards use. A company near
+ * its 52-week low is weak here and may be an excellent business, and a reader
+ * who assumes the three cards are comparable judgements will misread it.
+ */
+export function calculateSignalsScore(
+  price: StockPrice | null,
+  tone: 'positive' | 'negative' | 'neutral' | 'unknown' | null,
+  toneReported: boolean
+): { score: number | null; state: SignalsState | null; coverage: number; notes: string[] } {
+  const inputs: { label: string; value: number | null; weight: number; note: (value: number) => string }[] = [
+    {
+      label: '12-month range position',
+      value: rangePosition(price),
+      weight: 2,
+      note: (value) =>
+        `The price sits ${value.toFixed(0)}% of the way from its 52-week low to its 52-week high.`,
+    },
+    {
+      label: "Today's move",
+      value: sessionPosition(price?.changePercent ?? null),
+      weight: 1,
+      note: (value) =>
+        value >= 50
+          ? `The session is up, at ${value.toFixed(0)} on the day's scale.`
+          : `The session is down, at ${value.toFixed(0)} on the day's scale.`,
+    },
+  ];
+
+  // Headline tone only counts once enough articles were retrieved for it to mean
+  // anything, and it carries the least weight because it is the weakest signal.
+  if (toneReported && tone !== 'unknown' && tone !== null) {
+    const toneValue = tone === 'positive' ? 70 : tone === 'negative' ? 30 : 50;
+    inputs.push({
+      label: 'Headline tone',
+      value: toneValue,
+      weight: 1,
+      note: (value) =>
+        value > 50
+          ? `Retrieved headlines read positive.`
+          : value < 50
+            ? `Retrieved headlines read negative.`
+            : `Retrieved headlines read neutral.`,
+    });
+  }
+
+  const notes: string[] = [];
+  let weighted = 0;
+  let weight = 0;
+  let available = 0;
+
+  for (const input of inputs) {
+    if (input.value === null) {
+      notes.push(`${input.label} was not available, so it contributed nothing.`);
+      continue;
+    }
+    available += 1;
+    weight += input.weight;
+    weighted += input.value * input.weight;
+    notes.push(input.note(input.value));
+  }
+
+  if (available === 0) {
+    return { score: null, state: null, coverage: 0, notes };
+  }
+
+  // Coverage is against every input the reading could have used, not just the
+  // ones present in this call, so a page with no headlines cannot report full
+  // coverage by quietly narrowing the denominator.
+  const POSSIBLE_INPUTS = 3;
+
+  const score = Math.round(weighted / weight);
+  return {
+    score,
+    state: score >= 60 ? 'rising' : score >= 40 ? 'mixed' : 'falling',
+    coverage: available / POSSIBLE_INPUTS,
+    notes,
+  };
+}
+
 export type VerdictLabel = 'favourable' | 'mixed' | 'cautious' | 'insufficient-data';
 
 export interface ScreeningVerdict {

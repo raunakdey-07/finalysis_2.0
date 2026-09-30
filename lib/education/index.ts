@@ -107,10 +107,14 @@ const DEFINITIONS: Record<EducationKey, MetricDefinition> = {
   recentSignals: {
     key: 'recentSignals',
     name: 'Recent signals',
-    shortDescription: 'The day’s price move and the tone of recently retrieved headlines.',
-    whyItMatters: 'It shows what has happened lately, which is separate from how the business is doing.',
-    interpretation: 'Use it as context, not as a conclusion. Price moves and headline tone both reverse quickly.',
-    caveat: 'Finalysis reports no tone at all when fewer than five articles matched, because a handful of headlines is not a signal.',
+    shortDescription:
+      'Where the price sits in its twelve-month range, the day’s move, and the tone of retrieved headlines.',
+    whyItMatters:
+      'It describes how a share has been trading lately, which is separate from how the business is doing.',
+    interpretation:
+      'A higher number means the price is nearer the top of its 12-month range, or the headlines read positive. Read it as a position, not a quality measure.',
+    caveat:
+      'A company near its 52-week low scores low here and may be an excellent business. This is not comparable with the business-quality and valuation scores, and it is not a timing signal. No tone is reported at all when fewer than five articles matched.',
   },
   screeningVerdict: {
     key: 'screeningVerdict',

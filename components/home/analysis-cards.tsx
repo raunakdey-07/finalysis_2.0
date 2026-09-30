@@ -1,7 +1,7 @@
 "use client";
 
 import type { MetricScore, StockMetrics } from "@/lib/metrics";
-import { readMarketSignals } from "@/lib/metrics";
+import { calculateSignalsScore, readMarketSignals } from "@/lib/metrics";
 import type { StockFundamentals, StockPrice } from "@/types";
 import { formatMultiple, formatPercent, formatRupees, formatSignedPercent } from "@/lib/format";
 import { MetricExplanation, ScoreExplanation } from "@/components/ui/metric-explanation";
@@ -14,13 +14,16 @@ function Card({
   subtitle,
   topRule,
   style,
+  state,
   children,
 }: {
   title: string;
   subtitle: string;
   topRule?: string;
-  /** The style token for this card, used for the top rule and the corner label. */
+  /** Verdict style for a screening score. */
   style?: ReturnType<typeof styleFor>;
+  /** Directional style for the market-position reading. */
+  state?: { label: string; text: string };
   children: React.ReactNode;
 }) {
   return (
@@ -32,6 +35,8 @@ function Card({
         </div>
         {style ? (
           <span className={`text-xs font-semibold ${style.text}`}>{style.label}</span>
+        ) : state ? (
+          <span className={`text-xs font-semibold ${state.text}`}>{state.label}</span>
         ) : null}
       </div>
       {children}
@@ -165,20 +170,69 @@ function RecentSignalsCard({
   const direction = change === null ? null : change > 0 ? "up" : change < 0 ? "down" : "flat";
   const newsMissing = news !== null && (news.state === "unavailable" || news.state === "empty");
 
+  const toneReported = news?.state === "ok" && news.tone !== "unknown";
+  const reading = calculateSignalsScore(
+    price,
+    news?.state === "ok" ? news.tone : null,
+    toneReported
+  );
+
+  const state = reading.state
+    ? {
+        label: reading.state.charAt(0).toUpperCase() + reading.state.slice(1),
+        text:
+          reading.state === "rising"
+            ? "text-teal-800"
+            : reading.state === "falling"
+              ? "text-amber-800"
+              : "text-stone-700",
+      }
+    : undefined;
+
   return (
-    <Card title="Recent signals" subtitle="Price today, and news coverage" topRule="border-t-accent">
+    <Card
+      title="Recent signals"
+      subtitle="Price position, and news coverage"
+      topRule="border-t-accent"
+      state={state}
+    >
       {loading ? (
         <p className="mt-4 text-sm text-stone-500" role="status">
           Loading…
         </p>
       ) : (
         <>
-          {/* No score bar here on purpose: a session move is a reading, not a judgement. */}
-          <p className="mt-4 text-sm leading-relaxed text-stone-700">
-            {unknownSymbol
-              ? "No price was requested, because this ticker is outside the covered list."
-              : signals.note}
-          </p>
+          {reading.score === null ? (
+            <p className="mt-4 text-sm leading-relaxed text-stone-700">
+              {unknownSymbol
+                ? "No price was requested, because this ticker is outside the covered list."
+                : signals.note}
+            </p>
+          ) : (
+            <>
+              <div className="mt-4 flex items-baseline gap-1">
+                <span
+                  className={`text-4xl font-semibold tabular-nums ${state!.text}`}
+                >
+                  {reading.score}
+                </span>
+                <span className="text-base font-medium text-stone-500">/100</span>
+                <ScoreExplanation
+                  metric="recentSignals"
+                  lines={[
+                    ...reading.notes,
+                    "This is a reading of where the price sits and what the headlines say. It is not a measure of company quality, and a high number is not a good investment.",
+                  ]}
+                />
+              </div>
+              <p className="mt-2 text-xs leading-relaxed text-stone-600">
+                Where the price sits in its 12-month range, plus the day&apos;s move
+                {toneReported ? " and the tone of retrieved headlines" : ""}. This is a
+                position, not a quality score. Built from {Math.round(reading.coverage * 100)}% of
+                the inputs available.
+              </p>
+            </>
+          )}
 
           <dl className="mt-4 space-y-2.5 border-t border-stone-100 pt-4">
             <MetricRow
