@@ -411,7 +411,13 @@ export function calculateSignalsScore(
   price: StockPrice | null,
   tone: 'positive' | 'negative' | 'neutral' | 'unknown' | null,
   toneReported: boolean
-): { score: number | null; state: SignalsState | null; coverage: number; notes: string[] } {
+): {
+  score: number | null;
+  state: SignalsState | null;
+  coverage: number;
+  available: number;
+  notes: string[];
+} {
   const inputs: { label: string; value: number | null; weight: number; note: (value: number) => string }[] = [
     {
       label: '12-month range position',
@@ -465,7 +471,7 @@ export function calculateSignalsScore(
   }
 
   if (available === 0) {
-    return { score: null, state: null, coverage: 0, notes };
+    return { score: null, state: null, coverage: 0, available: 0, notes };
   }
 
   // Coverage is against every input the reading could have used, not just the
@@ -478,6 +484,7 @@ export function calculateSignalsScore(
     score,
     state: score >= 60 ? 'rising' : score >= 40 ? 'mixed' : 'falling',
     coverage: available / POSSIBLE_INPUTS,
+    available,
     notes,
   };
 }

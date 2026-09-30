@@ -93,6 +93,12 @@ describe('calculateSignalsScore', () => {
     expect(reading.score).toBeNull();
     expect(reading.state).toBeNull();
     expect(reading.coverage).toBe(0);
+    expect(reading.available).toBe(0);
+  });
+
+  it('reports how many of the three inputs it actually used', () => {
+    expect(calculateSignalsScore(price(), null, false).available).toBe(2);
+    expect(calculateSignalsScore(price(), 'positive', true).available).toBe(3);
   });
 
   it('scores on the day alone when the 52-week range is missing', () => {

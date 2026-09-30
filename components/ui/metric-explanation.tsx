@@ -59,6 +59,8 @@ type PopoverProps = {
   label: string;
   /** Company-specific lines shown under the generic explanation. */
   lines?: string[];
+  /** Heading above the extra lines. Defaults to a per-company framing. */
+  heading?: string;
   variant?: "inline" | "score";
   className?: string;
 };
@@ -71,6 +73,7 @@ function ExplanationPopover({
   body,
   label,
   lines,
+  heading = "For this company",
   variant = "inline",
   className,
 }: PopoverProps) {
@@ -189,7 +192,7 @@ function ExplanationPopover({
           {body}
           {lines && lines.length > 0 ? (
             <span className="mt-2 block border-t border-stone-200 pt-2">
-              <span className="mb-1 block font-medium text-stone-800">For this company</span>
+              <span className="mb-1 block font-medium text-stone-800">{heading}</span>
               <ul className="list-disc space-y-1 pl-4">
                 {lines.map((line) => (
                   <li key={line}>{line}</li>
@@ -209,9 +212,11 @@ type MetricExplanationProps = {
   className?: string;
   /** Extra lines shown under the generic explanation, for this particular case. */
   lines?: string[];
+  /** Heading above the extra lines. */
+  heading?: string;
 };
 
-export function MetricExplanation({ metric, label, className, lines }: MetricExplanationProps) {
+export function MetricExplanation({ metric, label, className, lines, heading }: MetricExplanationProps) {
   const definition = getMetricDefinition(metric);
   if (!definition) return null;
 
@@ -221,6 +226,7 @@ export function MetricExplanation({ metric, label, className, lines }: MetricExp
       label={label ?? `What ${definition.name} means`}
       title={definition.name}
       lines={lines}
+      heading={heading}
       className={className}
       body={
         <>

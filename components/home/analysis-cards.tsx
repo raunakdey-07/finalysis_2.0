@@ -1,6 +1,6 @@
 "use client";
 
-import type { MetricScore, StockMetrics } from "@/lib/metrics";
+import type { StockMetrics } from "@/lib/metrics";
 import { calculateSignalsScore, readMarketSignals } from "@/lib/metrics";
 import type { StockFundamentals, StockPrice } from "@/types";
 import { formatMultiple, formatPercent, formatRupees, formatSignedPercent } from "@/lib/format";
@@ -70,31 +70,37 @@ function MetricRow({
 }
 
 /**
- * A score is only rendered when the provider gave us something to score from.
+ * The shared body of a card that carries a 0-100 reading.
  *
- * The per-company reasons the score moved live behind the "?" rather than in
- * the card. Printing them as a second list restated the metric rows in prose,
- * which made the card tall without adding anything the reader could not get by
- * asking.
+ * All three cards use this, so the number, the bar, the explanation trigger
+ * and the coverage line sit in the same place in each. What differs is the
+ * label vocabulary and the rule colour, which is the whole point of the third
+ * card: it is a position, not a verdict.
  */
-function ScoreBody({
+function ReadingBody({
   score,
   explain,
   style,
+  lines,
+  note,
+  missing,
 }: {
-  score: MetricScore;
+  score: number | null;
   explain: EducationKey;
-  style: ReturnType<typeof styleFor>;
+  style: { text: string; bar: string };
+  lines: string[];
+  /** Shown under the bar in place of a coverage sentence. */
+  note?: string;
+  missing: string[];
 }) {
-
-  if (score.score === null) {
+  if (score === null) {
     return (
       <div className="mt-4">
         <p className="text-lg font-semibold text-stone-600">Not scored</p>
         <p className="mt-1 text-xs leading-relaxed text-stone-600">
-          None of the figures this score needs were published
-          {score.missing.length > 0 ? `: ${score.missing.join(", ")}` : ""}. There is nothing to
-          compare against sector bands.
+          {missing.length > 0
+            ? `None of the figures this needs were published: ${missing.join(", ")}.`
+            : "Nothing needed to build this was available."}
         </p>
       </div>
     );
@@ -103,17 +109,9 @@ function ScoreBody({
   return (
     <>
       <div className="mt-4 flex items-baseline gap-1">
-        <span className={`text-4xl font-semibold tabular-nums ${style.text}`}>{score.score}</span>
+        <span className={`text-4xl font-semibold tabular-nums ${style.text}`}>{score}</span>
         <span className="text-base font-medium text-stone-500">/100</span>
-        <ScoreExplanation
-          metric={explain}
-          lines={[
-            ...score.highlights,
-            ...(score.missing.length > 0
-              ? [`Not published: ${score.missing.join(", ")}. These contributed nothing to the score.`]
-              : []),
-          ]}
-        />
+        <ScoreExplanation metric={explain} lines={lines} />
       </div>
 
       <div
@@ -123,17 +121,11 @@ function ScoreBody({
       >
         <div
           className={`h-1.5 rounded-full transition-all ${style.bar}`}
-          style={{ width: `${score.score}%` }}
+          style={{ width: `${score}%` }}
         />
       </div>
 
-      <p className="mt-2 text-xs text-stone-500">
-        Built from {score.available} of {score.considered} published figure
-        {score.considered === 1 ? "" : "s"}.
-        {score.missing.some((label) => label === "P/E" || label === "P/B")
-          ? " A P/E is left blank for a company that is not profitable, and a P/B when net worth is negative, because neither ratio says anything useful in those cases."
-          : ""}
-      </p>
+      {note ? <p className="mt-2 text-xs text-stone-500">{note}</p> : null}
     </>
   );
 }
@@ -177,24 +169,29 @@ function RecentSignalsCard({
     toneReported
   );
 
-  const state = reading.state
-    ? {
-        label: reading.state.charAt(0).toUpperCase() + reading.state.slice(1),
-        text:
-          reading.state === "rising"
-            ? "text-teal-800"
-            : reading.state === "falling"
-              ? "text-amber-800"
-              : "text-stone-700",
-      }
-    : undefined;
+  // Same shape as the two screening cards: the rule, the label, the score and
+  // the bar all move together. The reading differs in its vocabulary, Rising /
+  // Mixed / Falling, not in its construction.
+  const signalStyle =
+    reading.state === "rising"
+      ? { text: "text-accent-ink", bar: "bg-accent", rule: "border-t-accent" }
+      : reading.state === "falling"
+        ? { text: "text-caution-ink", bar: "bg-caution", rule: "border-t-caution" }
+        : { text: "text-stone-700", bar: "bg-stone-500", rule: "border-t-stone-400" };
 
   return (
     <Card
       title="Recent signals"
       subtitle="Price position, and news coverage"
-      topRule="border-t-accent"
-      state={state}
+      topRule={signalStyle.rule}
+      state={
+        reading.state
+          ? {
+              label: reading.state.charAt(0).toUpperCase() + reading.state.slice(1),
+              text: signalStyle.text,
+            }
+          : undefined
+      }
     >
       {loading ? (
         <p className="mt-4 text-sm text-stone-500" role="status">
@@ -202,39 +199,19 @@ function RecentSignalsCard({
         </p>
       ) : (
         <>
-          {reading.score === null ? (
-            <p className="mt-4 text-sm leading-relaxed text-stone-700">
-              {unknownSymbol
-                ? "No price was requested, because this ticker is outside the covered list."
-                : signals.note}
-            </p>
-          ) : (
-            <>
-              <div className="mt-4 flex items-baseline gap-1">
-                <span
-                  className={`text-4xl font-semibold tabular-nums ${state!.text}`}
-                >
-                  {reading.score}
-                </span>
-                <span className="text-base font-medium text-stone-500">/100</span>
-                <ScoreExplanation
-                  metric="recentSignals"
-                  lines={[
-                    ...reading.notes,
-                    "This is a reading of where the price sits and what the headlines say. It is not a measure of company quality, and a high number is not a good investment.",
-                  ]}
-                />
-              </div>
-              <p className="mt-2 text-xs leading-relaxed text-stone-600">
-                Where the price sits in its 12-month range, plus the day&apos;s move
-                {toneReported ? " and the tone of retrieved headlines" : ""}. This is a
-                position, not a quality score. Built from {Math.round(reading.coverage * 100)}% of
-                the inputs available.
-              </p>
-            </>
-          )}
+          <ReadingBody
+            score={reading.score}
+            explain="recentSignals"
+            style={signalStyle}
+            missing={[]}
+            note={`Built from ${reading.available} of 3 inputs.`}
+            lines={[
+              ...reading.notes,
+              "This reads where the price sits and what the headlines say. It is not a measure of company quality, and a high number is not a good investment.",
+            ]}
+          />
 
-          <dl className="mt-4 space-y-2.5 border-t border-stone-100 pt-4">
+          <dl className="mt-5 space-y-2.5 border-t border-stone-100 pt-4">
             <MetricRow
               label="Session"
               explain="freshness"
@@ -260,6 +237,7 @@ function RecentSignalsCard({
             />
             <MetricRow
               label="Articles found"
+              explain="recentSignals"
               value={news?.state === "ok" ? String(news.articleCount) : "—"}
             />
           </dl>
@@ -330,10 +308,20 @@ export function AnalysisCards({
         >
           {decision.businessQuality ? (
             <>
-              <ScoreBody
-                score={decision.businessQuality}
+              <ReadingBody
+                score={decision.businessQuality.score}
                 explain="businessQuality"
                 style={qualityStyle}
+                missing={decision.businessQuality.missing}
+                note={`Built from ${decision.businessQuality.available} of ${decision.businessQuality.considered} published figure${decision.businessQuality.considered === 1 ? "" : "s"}.`}
+                lines={[
+                  ...decision.businessQuality.highlights,
+                  ...(decision.businessQuality.missing.length > 0
+                    ? [
+                        `Not published: ${decision.businessQuality.missing.join(", ")}. These contributed nothing to the score.`,
+                      ]
+                    : []),
+                ]}
               />
               <dl className="mt-5 space-y-2.5 border-t border-stone-100 pt-4">
                 <MetricRow label="ROE" explain="roe" value={formatPercent(fundamentals?.roe)} />
@@ -358,10 +346,21 @@ export function AnalysisCards({
         >
           {decision.valuation ? (
             <>
-              <ScoreBody
-                score={decision.valuation}
+              <ReadingBody
+                score={decision.valuation.score}
                 explain="valuation"
                 style={valuationStyle}
+                missing={decision.valuation.missing}
+                note={`Built from ${decision.valuation.available} of ${decision.valuation.considered} published figure${decision.valuation.considered === 1 ? "" : "s"}.`}
+                lines={[
+                  ...decision.valuation.highlights,
+                  ...(decision.valuation.missing.length > 0
+                    ? [
+                        `Not published: ${decision.valuation.missing.join(", ")}. These contributed nothing to the score.`,
+                        "A P/E is left blank for a company that is not profitable, and a P/B when net worth is negative, because neither ratio says anything useful in those cases.",
+                      ]
+                    : []),
+                ]}
               />
               <dl className="mt-5 space-y-2.5 border-t border-stone-100 pt-4">
                 <MetricRow

@@ -62,46 +62,31 @@ export function DataStatus({
     )
   );
 
+  // One line per fact, joined into a single sentence rather than a label and a
+  // value as separate bullets. The old shape produced ten short bullets where
+  // one paragraph was meant, and repeated the price timestamp the page already
+  // shows directly above the trigger.
+  const strip = (text: string) => text.replace(/\.\s*$/, '');
+
   const detailLines = [
-    "Price",
     unknownSymbol
-      ? "Not asked for. Finalysis only covers the NSE tickers in its own list."
-      : freshness
-        ? `${freshness.label}. ${freshness.detail}`
-        : "No price was retrieved.",
-    "",
-    "Company figures",
-    unknownSymbol
-      ? "Not asked for."
-      : figuresDate
-        ? `For the year to ${figuresDate}${fetchedOn ? `, read ${fetchedOn}` : ""}.`
-        : fetchedOn
-          ? `Read ${fetchedOn}, reporting date not stated.`
-          : "Not retrieved.",
-    "",
-    "Where it came from",
-    sources.length > 0 ? sources.join(" · ") : "None asked for.",
-    "",
-    "How confident we are",
-    unknownSymbol
-      ? "Nothing was looked up."
-      : getConfidenceMessage(quoteProvenance?.confidenceLevel ?? "unavailable"),
-    "",
-    "How long a figure is held",
-    `Price ${quoteProvenance?.cacheTTL ?? "—"}, company figures ${
-      fundamentalsProvenance?.cacheTTL ?? "—"
-    }${quoteProvenance?.cacheHit ? ". This price came from that held copy" : ""}.`,
-  ].filter((line) => line !== "");
+      ? "No lookup was made. Finalysis only covers the NSE tickers in its own list."
+      : [
+          freshness ? `Price: ${strip(freshness.detail)}` : "Price: not retrieved",
+          figuresDate
+            ? `company figures for the year to ${figuresDate}${fetchedOn ? `, read ${fetchedOn}` : ""}`
+            : "company figures: not retrieved",
+          `sources: ${sources.length > 0 ? sources.join(" and ") : "none asked for"}`,
+          `confidence: ${unknownSymbol ? "no lookup was made" : strip(getConfidenceMessage(quoteProvenance?.confidenceLevel ?? "unavailable")).toLowerCase()}`,
+          `held for price ${quoteProvenance?.cacheTTL ?? "—"}, company figures ${fundamentalsProvenance?.cacheTTL ?? "—"}`,
+        ].join(". ") + ".",
+  ];
 
   return (
     <div className="mt-2">
       <p className={`text-xs ${degraded ? "text-caution-ink" : FRESHNESS_TONE_CLASS[freshness?.tone ?? "unknown"]}`}>
-        {unknownSymbol
-          ? "Outside the covered list, so nothing was looked up."
-          : `${freshness ? freshness.label : "No price retrieved"}${
-              figuresDate ? ` · figures to ${figuresDate}` : ""
-            }`}
-        <MetricExplanation metric="provenance" lines={detailLines} />
+        {unknownSymbol ? "Outside the covered list, so nothing was looked up." : (freshness?.label ?? "No price retrieved")}
+        <MetricExplanation metric="provenance" lines={detailLines} heading="For this page" />
       </p>
 
       {warnings.length > 0 ? (
