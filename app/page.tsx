@@ -17,6 +17,7 @@ import { AnalysisCards } from "@/components/home/analysis-cards";
 import { DataStatus } from "@/components/home/data-status";
 import { NewsSection } from "@/components/home/news-section";
 import { ResearchLinks } from "@/components/home/research-links";
+import { SectionHeading } from "@/components/ui/section";
 import { styleFor } from "@/components/home/score-style";
 import { DisclaimerGate, MethodologyDialog } from "@/components/disclaimer-modal";
 import { ScoreExplanation } from "@/components/ui/metric-explanation";
@@ -570,7 +571,6 @@ export default function Page() {
 
   return (
     <>
-      <DisclaimerGate />
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:shadow"
@@ -594,8 +594,13 @@ export default function Page() {
           </header>
 
           <section aria-labelledby="search-heading" className="mb-8">
-            <h2 id="search-heading" className="mb-3 text-xs font-medium uppercase tracking-wider text-stone-500">
-              Find a company
+            <h2
+              id="search-heading"
+              className="mb-3 flex items-center gap-4 text-xs font-medium uppercase tracking-widest text-stone-500"
+            >
+              <span className="h-px flex-1 bg-stone-200" aria-hidden="true" />
+              <span>Find a company</span>
+              <span className="h-px flex-1 bg-stone-200" aria-hidden="true" />
             </h2>
 
             <form onSubmit={handleSearchSubmit} className="flex items-start gap-2">
@@ -783,7 +788,7 @@ export default function Page() {
                   {price.changePercent !== null ? (
                     <span
                       className={`text-sm font-medium tabular-nums ${
-                        price.changePercent >= 0 ? "text-teal-800" : "text-amber-800"
+                        price.changePercent >= 0 ? "text-accent-ink" : "text-caution-ink"
                       }`}
                     >
                       {formatSignedPercent(price.changePercent)}
@@ -825,14 +830,7 @@ export default function Page() {
             </section>
 
             <section aria-labelledby="verdict-heading" className="mb-10">
-              <h2
-                id="verdict-heading"
-                className="mb-3 flex items-center gap-4 text-xs font-medium uppercase tracking-widest text-stone-500"
-              >
-                <span className="h-px flex-1 bg-stone-200" aria-hidden="true" />
-                <span>Screening verdict</span>
-                <span className="h-px flex-1 bg-stone-200" aria-hidden="true" />
-              </h2>
+              <SectionHeading id="verdict-heading">Screening verdict</SectionHeading>
 
               {loading ? (
                 <div className="mt-4 rounded-xl border-l-4 border-l-stone-200 bg-white p-6 shadow-sm">
@@ -841,8 +839,8 @@ export default function Page() {
                   </p>
                 </div>
               ) : nothingLoaded ? (
-                <div className="mt-4 rounded-xl border-l-4 border-l-amber-700 bg-white p-6 shadow-sm">
-                  <p className="text-lg font-semibold text-amber-900">
+                <div className="mt-4 rounded-xl border-l-4 border-l-caution bg-white p-6 shadow-sm">
+                  <p className="text-lg font-semibold text-caution-ink">
                     {unknownSymbol
                       ? `${toApiSymbol(symbol)} is not a company Finalysis covers`
                       : `Nothing could be loaded for ${toApiSymbol(symbol)}`}
@@ -922,14 +920,9 @@ export default function Page() {
               )}
             </section>
 
-            <h2
-              id="figures-heading"
-              className="mb-5 flex items-center gap-4 text-xs font-medium uppercase tracking-widest text-stone-500"
-            >
-              <span className="h-px flex-1 bg-stone-200" aria-hidden="true" />
-              <span>The figures</span>
-              <span className="h-px flex-1 bg-stone-200" aria-hidden="true" />
-            </h2>
+            <SectionHeading id="figures-heading" className="mb-5">
+              The figures
+            </SectionHeading>
 
             <section aria-labelledby="figures-heading" className="contents">
               <AnalysisCards
@@ -939,11 +932,7 @@ export default function Page() {
                 unknownSymbol={unknownSymbol}
                 news={
                   news
-                    ? {
-                        tone: news.tone.tone,
-                        articleCount: news.tone.articleCount,
-                        note: news.tone.note,
-                      }
+                    ? { tone: news.tone.tone, articleCount: news.tone.articleCount }
                     : null
                 }
                 loading={loading}
@@ -952,15 +941,6 @@ export default function Page() {
 
             <NewsSection
               items={news?.items ?? []}
-              tone={
-                news
-                  ? {
-                      tone: news.tone.tone,
-                      articleCount: news.tone.articleCount,
-                      note: news.tone.note,
-                    }
-                  : null
-              }
               provenance={newsProvenance}
               loading={loading}
               unknownSymbol={unknownSymbol}
@@ -985,6 +965,12 @@ export default function Page() {
           </footer>
         </div>
       </div>
+
+      {/*
+        Rendered last so the dialog's own heading sits after the page heading in
+        the accessibility outline, whether or not the portal has mounted yet.
+      */}
+      <DisclaimerGate />
     </>
   );
 }

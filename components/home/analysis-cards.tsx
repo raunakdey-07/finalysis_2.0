@@ -50,7 +50,7 @@ function MetricRow({
   tone?: "up" | "down" | "flat";
 }) {
   const toneClass =
-    tone === "up" ? "text-teal-800" : tone === "down" ? "text-amber-800" : "text-stone-800";
+    tone === "up" ? "text-accent-ink" : tone === "down" ? "text-caution-ink" : "text-stone-800";
 
   return (
     <div className="flex items-center justify-between gap-3 text-sm">
@@ -135,7 +135,6 @@ function ScoreBody({
 export type NewsSummary = {
   tone: "positive" | "negative" | "neutral" | "unknown";
   articleCount: number;
-  note: string;
 };
 
 function RecentSignalsCard({
@@ -154,7 +153,7 @@ function RecentSignalsCard({
   const direction = change === null ? null : change > 0 ? "up" : change < 0 ? "down" : "flat";
 
   return (
-    <Card title="Recent signals" subtitle="Price today, and news coverage">
+    <Card title="Recent signals" subtitle="Price today, and news coverage" topRule="border-t-accent">
       {loading ? (
         <p className="mt-4 text-sm text-stone-500" role="status">
           Loading…
@@ -193,8 +192,12 @@ function RecentSignalsCard({
             <MetricRow label="Articles found" value={news ? String(news.articleCount) : "—"} />
           </dl>
 
-          {news && news.tone === "unknown" && news.articleCount > 0 ? (
-            <p className="mt-3 text-xs leading-relaxed text-stone-600">{news.note}</p>
+          {news && news.tone === "unknown" ? (
+            <p className="mt-3 text-xs leading-relaxed text-stone-600">
+              {news.articleCount > 0
+                ? `Only ${news.articleCount} headline${news.articleCount === 1 ? "" : "s"} matched this company, which is too few to call a tone. That is a thin sample, not a neutral reading.`
+                : "No headlines were retrieved, so no tone is reported. That is missing data, not a neutral reading."}
+            </p>
           ) : null}
         </>
       )}
@@ -222,76 +225,103 @@ export function AnalysisCards({
   const qualityStyle = styleFor(businessQuality?.verdict ?? "unknown");
   const valuationStyle = styleFor(valuation?.verdict ?? "unknown");
 
-  const notRetrieved = unknownSymbol
-    ? "Not asked for, because this ticker is outside the covered list."
-    : fundamentals
-      ? "No figures published to score."
-      : "Company figures not retrieved.";
+  /**
+   * One notice for the two score cards.
+   *
+   * Both used to render the identical sentence, which told a reader the same
+   * thing twice. Stated once above the grid it also explains the quiet
+   * placeholders inside the cards.
+   */
+  const sharedNotice = !loading && !fundamentals
+    ? unknownSymbol
+      ? "This ticker is outside the covered list, so no company figures were looked up."
+      : "Company figures were not retrieved, so neither score could be produced."
+    : null;
+
+  /**
+   * A dash, for both "still loading" and "nothing to show".
+   *
+   * The cards used to print a failure sentence while the request was still in
+   * flight, which asserted a failure before anything had failed, and then
+   * printed the same sentence a second time once the failure was real. The
+   * reason is stated once, above the grid.
+   */
+  const quietPlaceholder = (
+    <p className="mt-4 text-lg font-semibold text-stone-400" aria-hidden="true">
+      —
+    </p>
+  );
 
   return (
-    <div className="mb-12 grid gap-6 sm:grid-cols-3">
-      <Card
-        title="Business quality"
-        subtitle="Returns on capital"
-        topRule={businessQuality ? qualityStyle.topRule : undefined}
-        style={businessQuality ? qualityStyle : undefined}
-      >
-        {loading || !businessQuality ? (
-          <p className="mt-4 text-sm text-stone-500">{notRetrieved}</p>
-        ) : (
-          <>
-            <ScoreBody score={businessQuality} explain="businessQuality" style={qualityStyle} />
-            <dl className="mt-5 space-y-2.5 border-t border-stone-100 pt-4">
-              <MetricRow label="ROE" explain="roe" value={formatPercent(fundamentals?.roe)} />
-              <MetricRow label="ROCE" explain="roce" value={formatPercent(fundamentals?.roce)} />
-              <MetricRow
-                label="Dividend"
-                explain="dividendYield"
-                value={formatPercent(fundamentals?.dividendYield)}
-              />
-            </dl>
-          </>
-        )}
-      </Card>
+    <div className="mb-12">
+      {sharedNotice ? (
+        <p className="mb-4 text-sm leading-relaxed text-stone-600">{sharedNotice}</p>
+      ) : null}
 
-      <Card
-        title="Valuation"
-        subtitle="Price against earnings and net worth"
-        topRule={valuation ? valuationStyle.topRule : undefined}
-        style={valuation ? valuationStyle : undefined}
-      >
-        {loading || !valuation ? (
-          <p className="mt-4 text-sm text-stone-500">{notRetrieved}</p>
-        ) : (
-          <>
-            <ScoreBody score={valuation} explain="valuation" style={valuationStyle} />
-            <dl className="mt-5 space-y-2.5 border-t border-stone-100 pt-4">
-              <MetricRow
-                label="P/E"
-                explain="peRatio"
-                value={formatMultiple(fundamentals?.peRatio)}
-              />
-              <MetricRow
-                label="P/B"
-                explain="pbRatio"
-                value={formatMultiple(fundamentals?.pbRatio)}
-              />
-              <MetricRow
-                label="Book value"
-                explain="bookValue"
-                value={formatRupees(fundamentals?.bookValue)}
-              />
-            </dl>
-          </>
-        )}
-      </Card>
+      <div className="grid gap-6 sm:grid-cols-3">
+        <Card
+          title="Business quality"
+          subtitle="Returns on capital"
+          topRule={businessQuality ? qualityStyle.topRule : undefined}
+          style={businessQuality ? qualityStyle : undefined}
+        >
+          {loading || !businessQuality ? (
+            quietPlaceholder
+          ) : (
+            <>
+              <ScoreBody score={businessQuality} explain="businessQuality" style={qualityStyle} />
+              <dl className="mt-5 space-y-2.5 border-t border-stone-100 pt-4">
+                <MetricRow label="ROE" explain="roe" value={formatPercent(fundamentals?.roe)} />
+                <MetricRow label="ROCE" explain="roce" value={formatPercent(fundamentals?.roce)} />
+                <MetricRow
+                  label="Dividend"
+                  explain="dividendYield"
+                  value={formatPercent(fundamentals?.dividendYield)}
+                />
+              </dl>
+            </>
+          )}
+        </Card>
 
-      <RecentSignalsCard
-        price={price}
-        news={news}
-        loading={loading}
-        unknownSymbol={unknownSymbol}
-      />
+        <Card
+          title="Valuation"
+          subtitle="Price against earnings and net worth"
+          topRule={valuation ? valuationStyle.topRule : undefined}
+          style={valuation ? valuationStyle : undefined}
+        >
+          {loading || !valuation ? (
+            quietPlaceholder
+          ) : (
+            <>
+              <ScoreBody score={valuation} explain="valuation" style={valuationStyle} />
+              <dl className="mt-5 space-y-2.5 border-t border-stone-100 pt-4">
+                <MetricRow
+                  label="P/E"
+                  explain="peRatio"
+                  value={formatMultiple(fundamentals?.peRatio)}
+                />
+                <MetricRow
+                  label="P/B"
+                  explain="pbRatio"
+                  value={formatMultiple(fundamentals?.pbRatio)}
+                />
+                <MetricRow
+                  label="Book value"
+                  explain="bookValue"
+                  value={formatRupees(fundamentals?.bookValue)}
+                />
+              </dl>
+            </>
+          )}
+        </Card>
+
+        <RecentSignalsCard
+          price={price}
+          news={news}
+          loading={loading}
+          unknownSymbol={unknownSymbol}
+        />
+      </div>
     </div>
   );
 }

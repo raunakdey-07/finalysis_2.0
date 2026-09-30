@@ -161,14 +161,3 @@ export function getConfidenceMessage(confidence: 'high' | 'medium' | 'low' | 'un
       return 'At least one source could not be read at all.';
   }
 }
-
-/** Describes news coverage honestly, including the case where there is none. */
-export function getNewsCoverageMessage(articleCount: number, toneReported: boolean): string {
-  if (articleCount === 0) {
-    return 'No articles were retrieved for this company, so Finalysis reports no news tone. That is missing data, not a neutral reading.';
-  }
-  if (!toneReported) {
-    return `Only ${articleCount} article${articleCount === 1 ? '' : 's'} matched this company. That is too few to call a tone, so none is shown.`;
-  }
-  return `Tone is calculated from ${articleCount} retrieved article${articleCount === 1 ? '' : 's'}. Headline tone is weak evidence; read the articles themselves.`;
-}

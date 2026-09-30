@@ -3,12 +3,13 @@
 import type { FreshnessTone } from "@/lib/format";
 import type { Provenance, StockFundamentals, StockPrice } from "@/types";
 import { describePriceFreshness, formatExchangeDate } from "@/lib/format";
+import { getConfidenceMessage } from "@/lib/education";
 import { MetricExplanation } from "@/components/ui/metric-explanation";
 
 const FRESHNESS_TONE_CLASS: Record<FreshnessTone, string> = {
   live: "text-stone-500",
   recent: "text-stone-500",
-  stale: "text-amber-800",
+  stale: "text-caution-ink",
   unknown: "text-stone-500",
 };
 
@@ -81,6 +82,11 @@ export function DataStatus({
     "Where it came from",
     sources.length > 0 ? sources.join(" · ") : "None asked for.",
     "",
+    "How confident we are",
+    unknownSymbol
+      ? "Nothing was looked up."
+      : getConfidenceMessage(quoteProvenance?.confidenceLevel ?? "unavailable"),
+    "",
     "How long a figure is held",
     `Price ${quoteProvenance?.cacheTTL ?? "—"}, company figures ${
       fundamentalsProvenance?.cacheTTL ?? "—"
@@ -89,7 +95,7 @@ export function DataStatus({
 
   return (
     <div className="mt-2">
-      <p className={`text-xs ${degraded ? "text-amber-800" : FRESHNESS_TONE_CLASS[freshness?.tone ?? "unknown"]}`}>
+      <p className={`text-xs ${degraded ? "text-caution-ink" : FRESHNESS_TONE_CLASS[freshness?.tone ?? "unknown"]}`}>
         {unknownSymbol
           ? "Outside the covered list, so nothing was looked up."
           : `${freshness ? freshness.label : "No price retrieved"}${
@@ -101,7 +107,7 @@ export function DataStatus({
       {warnings.length > 0 ? (
         <ul className="mt-1 space-y-0.5">
           {warnings.map((warning) => (
-            <li key={warning} className="text-xs leading-relaxed text-amber-800">
+            <li key={warning} className="text-xs leading-relaxed text-caution-ink">
               {warning}
             </li>
           ))}

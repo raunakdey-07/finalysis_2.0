@@ -18,6 +18,34 @@
 @theme {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+
+  /*
+   * The signature accent, and the one status colour.
+   *
+   * Both used to be stock Tailwind teal and amber, hardcoded as class strings
+   * across the page and the card components with no token behind them. That is
+   * why the accent drifted: two sections ended up with grey borders and looked
+   * like they belonged to a different product. Naming them here makes the
+   * palette one decision in one place.
+   *
+   * The values are pinned sRGB hex rather than left as Tailwind's oklch
+   * defaults. The oklch ambers fall outside sRGB, and a browser clips them to
+   * #bb4d00 and #973c00, which is a redder orange than "amber" implies and
+   * disagrees with a reader of the Tailwind documentation. Pinning both ramps
+   * keeps the accent and the status colour specified the same way, and keeps
+   * them from drifting apart again.
+   *
+   * `-ink` is for text on white and clears 4.5:1. The plain token is for
+   * rules, bars and fills.
+   *
+   * This is the product accent only. Positive, negative, unavailable and error
+   * states keep their own colours and must never borrow it.
+   */
+  --color-accent-ink: #134e4a; /* teal-800 */
+  --color-accent: #0f766e; /* teal-700 */
+  --color-caution-ink: #92400e; /* amber-800 */
+  --color-caution: #b45309; /* amber-700 */
+
   --font-sans: var(--font-plex), var(--font-plex-ext), ui-sans-serif, system-ui, -apple-system,
     "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
