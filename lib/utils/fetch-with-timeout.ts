@@ -42,27 +42,48 @@ function buildSignal(timeoutMs: number, externalSignal?: AbortSignal | null) {
  * payloads here run to hundreds of kilobytes, so both steps are bounded
  * together.
  */
+export interface FetchResult<T> {
+  data: T;
+  status: number;
+  ok: boolean;
+  headers: Record<string, string>;
+}
+
 export async function fetchText(
   input: RequestInfo | URL,
   init: RequestInit = {},
   timeoutMs: number = DEFAULT_TIMEOUT_MS
-): Promise<{ text: string; status: number; ok: boolean }> {
+): Promise<{ text: string; status: number; ok: boolean; headers: Record<string, string> }> {
   const { signal, release } = buildSignal(clampTimeoutMs(timeoutMs), init.signal);
 
   try {
     const response = await fetch(input, { ...init, signal });
     const text = await response.text();
-    return { text, status: response.status, ok: response.ok };
+    return {
+      text,
+      status: response.status,
+      ok: response.ok,
+      headers: headersToObject(response.headers),
+    };
   } finally {
     release();
   }
+}
+
+/** Header names are lower-cased so callers can index them predictably. */
+export function headersToObject(headers: Headers): Record<string, string> {
+  const out: Record<string, string> = {};
+  headers.forEach((value, key) => {
+    out[key.toLowerCase()] = value;
+  });
+  return out;
 }
 
 export async function fetchJson<T>(
   input: RequestInfo | URL,
   init: RequestInit = {},
   timeoutMs: number = DEFAULT_TIMEOUT_MS
-): Promise<{ data: T; status: number; ok: boolean }> {
-  const { text, status, ok } = await fetchText(input, init, timeoutMs);
-  return { data: JSON.parse(text) as T, status, ok };
+): Promise<FetchResult<T>> {
+  const { text, status, ok, headers } = await fetchText(input, init, timeoutMs);
+  return { data: JSON.parse(text) as T, status, ok, headers };
 }

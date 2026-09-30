@@ -9,6 +9,42 @@
 
 type Scope = 'price' | 'fundamentals' | 'news';
 
+/**
+ * Rate limiting is an answer, not a fault.
+ *
+ * Retrying immediately spends the remaining budget on requests the provider has
+ * already refused, and slows recovery. Anything that wraps a provider error in
+ * this type tells the retry loop to stop.
+ */
+export class RateLimited extends Error {
+  constructor(public readonly retryAfterMs: number | null) {
+    super('Provider is rate limiting requests');
+    this.name = 'RateLimited';
+  }
+}
+
+export function isWorthRetrying(error: unknown): boolean {
+  return !(error instanceof RateLimited);
+}
+
+/**
+ * `Retry-After` is either a number of seconds or an HTTP date. Both are
+ * handled, and the result is capped so a hostile or mistaken header cannot park
+ * the app for minutes.
+ */
+export function parseRetryAfter(header: string | undefined): number | null {
+  if (!header) return null;
+
+  const seconds = Number(header);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.min(seconds * 1000, MAX_RETRY_AFTER_MS);
+
+  const date = Date.parse(header);
+  if (Number.isNaN(date)) return null;
+  return Math.min(Math.max(0, date - Date.now()), MAX_RETRY_AFTER_MS);
+}
+
+const MAX_RETRY_AFTER_MS = 120_000;
+
 const SCOPE_LABEL: Record<Scope, string> = {
   price: 'Live pricing',
   fundamentals: 'Company figures',

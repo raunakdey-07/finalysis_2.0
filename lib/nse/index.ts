@@ -1,6 +1,6 @@
 import { ConfidenceLevel, Provenance, StockPrice } from '@/types';
 import cache from '@/lib/cache';
-import { describeOutage, logDetail } from '@/lib/errors';
+import { describeOutage, isWorthRetrying, logDetail } from '@/lib/errors';
 import { getDailyPricesSnapshot, MAX_SNAPSHOT_AGE_MS, StoredQuote } from '@/lib/nse/daily-prices';
 import { fetchYahooQuote } from '@/lib/yahoo';
 
@@ -57,6 +57,7 @@ async function withRetries<T>(fn: () => Promise<T>): Promise<T> {
       return result;
     } catch (error) {
       lastError = error;
+      if (!isWorthRetrying(error)) break;
       const delay = RETRY_DELAYS_MS[attempt];
       if (delay !== undefined) await sleep(delay);
     }

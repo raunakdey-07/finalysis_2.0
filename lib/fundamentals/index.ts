@@ -1,6 +1,6 @@
 import cache from '@/lib/cache';
 import { Provenance, StockFundamentals } from '@/types';
-import { describeOutage, logDetail } from '@/lib/errors';
+import { describeOutage, logDetail, parseRetryAfter, RateLimited } from '@/lib/errors';
 import { fetchText } from '@/lib/utils/fetch-with-timeout';
 import { isValidFundamentals } from './validate';
 
@@ -18,6 +18,44 @@ import { isValidFundamentals } from './validate';
 const FUNDAMENTALS_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 12_000;
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36';
+
+/**
+ * A courtesy brake on the one provider we scrape.
+ *
+ * The 30-day cache and the per-symbol single-flight mean a normal visitor
+ * costs one request a month. That still leaves no ceiling on what a cold cache
+ * plus a spread of client addresses can produce, and a burst is what gets an
+ * address refused outright. Two requests at a time with a small gap between
+ * starts is slower than the theoretical maximum and never close to the
+ * threshold that triggers a block.
+ *
+ * Per instance, like the rest of the cache, so it is a floor on politeness
+ * rather than a global limit. It exists so that a burst degrades into a queue
+ * instead of a refusal.
+ */
+const MAX_CONCURRENT = 2;
+const MIN_GAP_MS = 150;
+
+let active = 0;
+let lastStartedAt = 0;
+const waiting: (() => void)[] = [];
+
+async function withProviderSlot<T>(task: () => Promise<T>): Promise<T> {
+  if (active >= MAX_CONCURRENT) {
+    await new Promise<void>((resolve) => waiting.push(resolve));
+  }
+
+  active += 1;
+  try {
+    const wait = MIN_GAP_MS - (Date.now() - lastStartedAt);
+    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+    lastStartedAt = Date.now();
+    return await task();
+  } finally {
+    active -= 1;
+    waiting.shift()?.();
+  }
+}
 
 const NUMBER_CLEAN = /[,\s₹%]/g;
 const ENTITIES: Record<string, string> = {
@@ -311,18 +349,29 @@ export async function fetchFundamentals(symbol: string): Promise<FundamentalsRes
 
   try {
     const html = await cache.dedupe(cacheKey, async () => {
-      const res = await fetchText(url, { headers: { 'User-Agent': UA } }, REQUEST_TIMEOUT_MS);
-
-      if (res.status === 404) {
-        throw new Error(
-          `Screener.in has no page for ${slug}. Its ticker may differ from the NSE symbol.`
+      const res = await withProviderSlot(async () => {
+        const response = await fetchText(
+          url,
+          { headers: { 'User-Agent': UA } },
+          REQUEST_TIMEOUT_MS
         );
-      }
-      if (!res.ok) {
-        throw new Error(`Screener.in returned HTTP ${res.status}`);
-      }
 
-      return res.text;
+        if (response.status === 404) {
+          throw new Error(
+            `Screener.in has no page for ${slug}. Its ticker may differ from the NSE symbol.`
+          );
+        }
+        if (response.status === 429) {
+          throw new RateLimited(parseRetryAfter(response.headers['retry-after']));
+        }
+        if (!response.ok) {
+          throw new Error(`Screener.in returned HTTP ${response.status}`);
+        }
+
+        return response.text;
+      });
+
+      return res;
     });
 
     const fundamentals = parseFundamentalsHtml(html, slug);

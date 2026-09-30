@@ -1,5 +1,6 @@
 import { StockPrice } from '@/types';
 import { fetchJson } from '@/lib/utils/fetch-with-timeout';
+import { parseRetryAfter, RateLimited } from '@/lib/errors';
 
 const YAHOO_BASE_URL = 'https://query1.finance.yahoo.com';
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -198,6 +199,14 @@ async function fetchYahooChart(symbol: string): Promise<YahooChartResult | null>
   );
 
   if (response.status === 404) return null;
+
+  if (response.status === 429) {
+    // Refuse immediately rather than spending the remaining budget on requests
+    // the provider has already declined, and carry its cooldown so the caller
+    // can wait it out instead of retrying straight away.
+    throw new RateLimited(parseRetryAfter(response.headers['retry-after']));
+  }
+
   if (!response.ok) {
     throw new Error(`Yahoo Finance chart error: ${response.status}`);
   }
