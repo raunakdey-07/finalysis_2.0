@@ -82,7 +82,7 @@ Copy `.env.example` and set the values you need. Only the first is required.
 | Variable | Required | Purpose |
 | --- | --- | --- |
 | `CRON_SECRET` | For the snapshot job | Bearer token the job requires. If it is unset the job returns 503 rather than running open. |
-| `KV_REDIS_URL` | For the snapshot job | Redis used to store the end-of-day close snapshot. Without it, prices fall back to a cache-only policy. |
+| `KV_REDIS_URL` | For the snapshot job | Redis used to store the end-of-day close snapshot. Without it, prices fall back to a cache-only policy. `REDIS_URL` is accepted as an alias. |
 | `NEXT_PUBLIC_SITE_URL` | Optional | Canonical URL used for metadata, robots and sitemap. Defaults to `https://finalysis.vercel.app`. |
 
 Vercel cron requests automatically send `CRON_SECRET` as an
@@ -177,8 +177,24 @@ serverless invocation. Configure it in `vercel.json`:
 { "crons": [{ "path": "/api/cron/update-prices", "schedule": "45 10 * * 1-5" }] }
 ```
 
+A slice of 300 out of 2,364 symbols means a given symbol is re-fetched roughly
+every eight days, so a close can be up to three weeks old by the time it is
+read. That window is enforced per symbol rather than on the snapshot as a whole:
+because each run merges into the same record, the snapshot's own timestamp is
+when the *newest* symbol in it was captured, and a symbol that keeps failing
+would otherwise keep serving a quote far older than that. A quote with no
+readable capture time is refused rather than assumed fresh. The page always
+labels this value as an end-of-day close and never as a live price.
+
 ## Known limitations
 
+- **The screening scores are banded, so they are coarse.** A figure inside a
+  band contributes a fixed amount, which means two companies in the same band
+  score identically however far apart their actual figures are. TCS at ROE 65%
+  and Infosys at ROE 36% both read as "strong against the band" and both score
+  82 for business quality. That is the design, not a fault: the score answers
+  "where does this sit against its sector", not "how good is this company". The
+  published figures are on the card, and they are where the difference shows.
 - Headline tone is a keyword reading, not an understanding of the article. It
   needs at least five retrieved articles before it is reported at all, and at
   least three of those carrying a direction before it will call one either way.
