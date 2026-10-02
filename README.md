@@ -186,6 +186,26 @@ would otherwise keep serving a quote far older than that. A quote with no
 readable capture time is refused rather than assumed fresh. The page always
 labels this value as an end-of-day close and never as a live price.
 
+## Checking that the data still arrives
+
+The one failure this repository cannot detect on its own is a provider quietly
+changing shape. If Screener.in alters its markup, the parser returns nothing for
+every company, the site keeps serving pages, and every test still passes,
+because the tests read stored fixtures rather than the provider. Company
+figures would disappear site-wide with nothing reporting it.
+
+`pnpm run check:providers` is the check that would catch it. It fetches real
+pages and runs them through the real parser and the real validator, and fails
+if coverage drops. It is deliberately excluded from `pnpm test` and from CI: a
+suite that goes red because a third-party site is having a bad day trains
+people to ignore red, and CI would be testing the internet rather than this
+code. Run it on a schedule, or after anything odd is seen on the site.
+
+It is also worth running periodically for a duller reason. Company figures are
+cached for 30 days, so a provider that changes its markup today keeps serving
+the cached copy for up to a month before anything visibly breaks. The damage
+arrives all at once rather than gradually.
+
 ## Known limitations
 
 - **The screening scores are banded, so they are coarse.** A figure inside a

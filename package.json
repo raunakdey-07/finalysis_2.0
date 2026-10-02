@@ -10,6 +10,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "check:providers": "CHECK_PROVIDERS=1 vitest run tests/provider-health.live.test.ts",
     "stocks:sync": "node scripts/sync-nse-symbols.mjs",
     "stocks:validate": "node scripts/validate-stocks-dataset.mjs"
   },
