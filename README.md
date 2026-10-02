@@ -18,8 +18,13 @@ not recommend buying or selling anything.
   ROE, ROCE and dividend yield, compared against ranges for the company's
   sector. A figure that was not published contributes nothing and is named as
   missing. If nothing a score needs was published, no score is shown.
-- **Recent signals.** The day's move, and the tone of retrieved headlines.
-  No tone is reported at all when fewer than five articles matched.
+- **Recent signals.** Where the price sits in its 12-month range, how it has
+  moved over the last few sessions, the day's move, and the tone of retrieved
+  headlines. It answers a different question from the two screening cards and
+  uses different words, because it describes a position rather than judging the
+  company. It is not comparable with the other two. No tone is reported at all
+  when fewer than five articles matched, and the tone reads neutral when fewer
+  than three of them carry a direction either way.
 - **A data status note.** The price timestamp and the reporting period are stated
   in the open, because that is what you need before trusting a number. Sources,
   cache windows and anything that failed are behind the "?". Failures are never
@@ -49,7 +54,7 @@ happened.
 
 | Data | Source | Refresh |
 | --- | --- | --- |
-| Share price | Yahoo Finance chart API | 10 minutes, per instance |
+| Share price | Yahoo Finance chart API | 30 minutes, per instance |
 | Company figures | Screener.in public company page | 30 days, per instance |
 | Headlines | Google News RSS | 1 hour, per instance |
 | End-of-day close | Redis snapshot, written by a scheduled job | rotating slice, weekdays |
@@ -112,7 +117,8 @@ rejects anything outside the covered dataset before making an upstream request.
 
 ## How the scores work
 
-Each score starts from a neutral 50 and adjusts it for published figures:
+The two screening cards each start from a neutral 50 and adjust it for published
+figures:
 
 - **Business quality**: ROE against the sector band, ROCE against the sector
   band, and dividend yield.
@@ -123,7 +129,38 @@ is missing, the general-market bands are used and the page says so.
 
 A published figure moves the score. A missing one does not. If no figure a
 score needs was published, the score is absent rather than 50, because a neutral
-score is indistinguishable from a real, unremarkable reading.
+score is indistinguishable from a real, unremarkable reading. A figure that was
+published but cannot be read, such as the P/E of a loss-making company,
+contributes nothing and says so in its own line.
+
+The label is read off the number printed beside it, so the two can never
+disagree: 60 or above is Favourable, 40 to 59 is Mixed, below 40 is Cautious.
+
+### The third card is not a screening score
+
+**Recent signals** answers a different question. It describes where the price
+sits and how it has been moving, not what the company is worth, so it is
+labelled Buoyant, Steady or Soft rather than Favourable, Mixed or Cautious, and
+its number is not comparable with the other two. A company resting on its
+52-week low can be an excellent business and read Soft here.
+
+It also starts from 50 and takes four inputs: position in the 12-month range,
+the move over the last few sessions, today's move, and the tone of retrieved
+headlines. Range position carries double weight, because it is the slowest and
+most informative of the four.
+
+The range term is centred on 30, not on the arithmetic midpoint of 50. A
+company's 52-week high and low are set at different times, so a falling stock
+has its low set recently and sits in the bottom of its own range. Measured
+across 39 live large caps, raw range position averaged about 30 with 85% of
+names below the midpoint, so a score built on 50 sat around 38 and was largely
+that one term rescaled. Centring on the observed value is what makes 50 mean
+"an ordinary stock on an ordinary day".
+
+**That 30 is the one number here that is a market assumption rather than a
+measurement about the company.** It was measured rather than guessed, but it
+drifts as the market's own distribution drifts, and it should be re-measured
+rather than trusted.
 
 ## Maintenance
 
@@ -142,8 +179,17 @@ serverless invocation. Configure it in `vercel.json`:
 
 ## Known limitations
 
-- Headline tone is a keyword count, not an understanding of the article. It
-  needs at least five retrieved articles before it is reported at all.
+- Headline tone is a keyword reading, not an understanding of the article. It
+  needs at least five retrieved articles before it is reported at all, and at
+  least three of those carrying a direction before it will call one either way.
+  Below that it reports neutral, which means thin coverage rather than a
+  balanced news picture, and the card says which it was.
+- Headline tone cannot measure intensity. A 2% rise and a collapse score the
+  same, because a word list does not know how much a word is worth. It says
+  which way a headline points, not how hard.
+- P/B is derived from the current price and the book value on the company page,
+  and that page is cached for 30 days. The ratio is therefore consistent with
+  the P/E printed beside it, but not with the live price at the top of the page.
 - A failed request is retried once automatically, so the page does not depend on
   the reader pressing anything.
 - Company figures are the latest completed financial year. They are not a
