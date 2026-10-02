@@ -84,6 +84,48 @@ describe('score construction', () => {
    * A neutral 50 is the reference a real reading is measured against. It is
    * not a stand-in for a missing one.
    */
+  /**
+   * The card prints a number and a label side by side, and the label is chosen
+   * from the number's band. The two were read from different values: the label
+   * from the raw total, the number after rounding. They agree today only
+   * because every delta is a whole number, so a fractional one would have
+   * printed 60 beside "Mixed", on a band that starts at 60.
+   */
+  it('never shows a label that disagrees with the number printed beside it', () => {
+    const band = (score: number) =>
+      score >= 60 ? 'favourable' : score >= 40 ? 'mixed' : 'cautious';
+
+    for (const sector of ['Energy', 'Financial Services', 'Technology', 'Consumer', 'Something Unlisted']) {
+      for (let pe = 1; pe <= 90; pe += 0.5) {
+        for (const pb of [0.4, 1, 3, 8, 20]) {
+          for (const roe of [-10, 0, 9, 15, 25]) {
+            const metrics = calculateMetrics(fundamentals({ sector, peRatio: pe, pbRatio: pb, roe }));
+            for (const score of [metrics.valuation, metrics.businessQuality]) {
+              if (score.score === null) continue;
+              expect(score.verdict, `${sector} pe=${pe} pb=${pb} roe=${roe} -> ${score.score}`).toBe(
+                band(score.score)
+              );
+            }
+          }
+        }
+      }
+    }
+  });
+
+  it('keeps the overall verdict on the same band as the overall number', () => {
+    for (let pe = 2; pe <= 80; pe += 1) {
+      const metrics = calculateMetrics(fundamentals({ peRatio: pe, pbRatio: pe / 8, roe: pe }));
+      const verdict = describeVerdict(metrics);
+      if (metrics.overallScore === null) {
+        expect(verdict.label).toBe('insufficient-data');
+        continue;
+      }
+      const expected =
+        metrics.overallScore >= 60 ? 'favourable' : metrics.overallScore >= 40 ? 'mixed' : 'cautious';
+      expect(verdict.label, `overall ${metrics.overallScore}`).toBe(expected);
+    }
+  });
+
   it('produces no score at all when nothing was published', () => {
     const empty = fundamentals({
       peRatio: null,

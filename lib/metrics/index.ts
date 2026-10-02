@@ -236,9 +236,27 @@ function combine(specs: InputSpec[]): MetricScore {
 
   const coverage = specs.length === 0 ? 0 : available / specs.length;
 
+  if (available === 0) {
+    return {
+      score: null,
+      verdict: null,
+      coverage,
+      available,
+      considered: specs.length,
+      highlights,
+      missing,
+    };
+  }
+
+  // The verdict is read off the number the card actually prints, not off the
+  // raw total. They are the same value today only because every delta is a
+  // whole number; the moment one is not, a total of 59.5 would print 60 on the
+  // card and read "Mixed" beside a 60 whose band starts at 60.
+  const score = clamp(Math.round(total));
+
   return {
-    score: available === 0 ? null : clamp(Math.round(total)),
-    verdict: available === 0 ? null : verdictFor(clamp(total)),
+    score,
+    verdict: verdictFor(score),
     coverage,
     available,
     considered: specs.length,
