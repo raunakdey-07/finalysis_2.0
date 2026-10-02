@@ -23,8 +23,31 @@ export class RateLimited extends Error {
   }
 }
 
+/**
+ * The provider has answered that this data does not exist, rather than failing
+ * to answer.
+ *
+ * A 404 from every candidate for a ticker will still be a 404 on the next
+ * attempt, so retrying spends three requests to learn the same thing. With a
+ * provider that rate limits, and a scheduled job walking a slice of the
+ * universe, that turns one missing symbol into nine requests.
+ */
+export class Unavailable extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'Unavailable';
+  }
+}
+
+/**
+ * Whether another attempt could plausibly succeed.
+ *
+ * A rate limit and a definitive "no such ticker" are both answers, not faults,
+ * and both are wasted budget to retry. Everything else is transient enough to
+ * be worth one more go.
+ */
 export function isWorthRetrying(error: unknown): boolean {
-  return !(error instanceof RateLimited);
+  return !(error instanceof RateLimited) && !(error instanceof Unavailable);
 }
 
 /**

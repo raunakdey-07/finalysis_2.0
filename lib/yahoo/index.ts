@@ -1,6 +1,6 @@
 import { StockPrice } from '@/types';
 import { fetchJson } from '@/lib/utils/fetch-with-timeout';
-import { parseRetryAfter, RateLimited } from '@/lib/errors';
+import { parseRetryAfter, RateLimited, Unavailable } from '@/lib/errors';
 
 const YAHOO_BASE_URL = 'https://query1.finance.yahoo.com';
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -268,7 +268,11 @@ export async function fetchYahooQuote(symbol: string): Promise<YahooQuote> {
   // A candidate that returned nothing was a 404, which is a real answer. If any
   // candidate instead failed outright, that failure is the useful one to report,
   // otherwise a dead connection reads downstream as "no such ticker".
+  //
+  // Every candidate answering 404 is the permanent case: the provider has said
+  // this ticker does not exist, and saying so again costs three more requests
+  // each time the symbol is asked for.
   if (rejection && rejected > 0) throw rejection;
 
-  throw new Error(`No NSE quote available for ${symbol}`);
+  throw new Unavailable(`No NSE quote available for ${symbol}`);
 }

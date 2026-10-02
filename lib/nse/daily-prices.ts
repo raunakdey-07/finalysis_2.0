@@ -66,6 +66,7 @@ function isStoredQuote(value: unknown): value is StoredQuote {
   const optionalNumbers = [
     'change',
     'changePercent',
+    'recentChangePercent',
     'volume',
     'previousClose',
     'dayOpen',

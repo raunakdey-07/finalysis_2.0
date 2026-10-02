@@ -7,7 +7,7 @@
  * carried rather than thrown away.
  */
 import { describe, expect, it } from 'vitest';
-import { isWorthRetrying, parseRetryAfter, RateLimited } from '@/lib/errors';
+import { isWorthRetrying, parseRetryAfter, RateLimited, Unavailable } from '@/lib/errors';
 
 describe('rate limiting', () => {
   it('is not worth retrying, unlike a transport failure', () => {
@@ -18,6 +18,24 @@ describe('rate limiting', () => {
 
   it('carries a cooldown so the caller can wait instead of hammering', () => {
     expect(new RateLimited(45000).retryAfterMs).toBe(45000);
+  });
+});
+
+/**
+ * A ticker the provider says does not exist will still not exist on the next
+ * attempt. The retry loop tries three candidate symbols, so retrying a
+ * definitive 404 cost nine requests for one missing symbol, against a provider
+ * that rate limits and a scheduled job that walks a slice of the universe.
+ */
+describe('a provider that answered "no such ticker"', () => {
+  it('is not worth retrying', () => {
+    expect(isWorthRetrying(new Unavailable('No NSE quote available for RELIANCE'))).toBe(false);
+  });
+
+  it('still retries faults that a second attempt could clear', () => {
+    expect(isWorthRetrying(new Error('fetch failed'))).toBe(true);
+    expect(isWorthRetrying(new Error('Yahoo Finance chart error: 500'))).toBe(true);
+    expect(isWorthRetrying(new Error('Request timed out after 10000ms'))).toBe(true);
   });
 });
 

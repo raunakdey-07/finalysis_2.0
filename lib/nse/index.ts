@@ -198,9 +198,20 @@ export async function fetchNSEQuote(
   const stale = cache.getStale<StoredQuote>(key);
   const snapshot = await getDailyPricesSnapshot().catch(() => null);
   const snapshotAge = snapshot ? Date.now() - Date.parse(snapshot.updatedAt) : null;
-  const snapshotQuote =
+  const snapshotItem =
     snapshot && snapshotAge !== null && snapshotAge <= MAX_SNAPSHOT_AGE_MS
       ? snapshot.items[normalized]
+      : undefined;
+
+  // The window is enforced per symbol, not only on the snapshot as a whole.
+  // Each run merges its slice into the same record, so the snapshot's updatedAt
+  // is the time the *newest* symbol was captured. A symbol that keeps failing
+  // would otherwise keep serving a quote far older than the window claims, and
+  // a month-old "last close" would read like a recent one.
+  const snapshotQuoteAge = snapshotItem ? ageOf(snapshotItem.fetchedAt) : null;
+  const snapshotQuote =
+    snapshotItem && snapshotQuoteAge !== null && snapshotQuoteAge <= MAX_SNAPSHOT_AGE_MS
+      ? snapshotItem
       : undefined;
 
   if (stale && (!snapshotQuote || snapshotAge === null || stale.ageMs < snapshotAge)) {
@@ -218,7 +229,7 @@ export async function fetchNSEQuote(
   }
 
   if (snapshotQuote) {
-    const ageMs = snapshotAge ?? 0;
+    const ageMs = snapshotQuoteAge ?? 0;
     return {
       price: toPrice(snapshotQuote, { kind: 'daily-close', ageMs }),
       provenance: buildProvenance({

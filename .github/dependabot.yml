@@ -1,0 +1,58 @@
+# Weekly, grouped, and majors excluded.
+#
+# This repository pins `pnpm` through `packageManager` and installs with
+# `--frozen-lockfile`, so a bump arrives as a lockfile change CI has to accept
+# rather than as a silent upgrade. Dependabot is here to notice a published
+# fix and a stale action, not to propose a redesign of the dependency tree.
+#
+# Majors are ignored deliberately. A Next.js major is a migration, and a
+# stream of them would be noise rather than maintenance.
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+    groups:
+      # One reviewable change for a maintenance release, not one per package.
+      dependencies:
+        applies-to: version-updates
+        patterns:
+          - '*'
+      # Security fixes are worth a prompt, separate decision.
+      security:
+        applies-to: security-updates
+        patterns:
+          - '*'
+    ignore:
+      # Requires a migration, not a merge. Raise these deliberately.
+      - dependency-name: next
+        update-types:
+          - version-update:semver-major
+      - dependency-name: react
+        update-types:
+          - version-update:semver-major
+      - dependency-name: react-dom
+        update-types:
+          - version-update:semver-major
+      - dependency-name: typescript
+        update-types:
+          - version-update:semver-major
+      # pnpm is pinned by `packageManager`; a bump has to change that field on
+      # purpose, not as a side effect of a dependency PR.
+      - dependency-name: pnpm
+        update-types:
+          - version-update:semver-major
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    labels:
+      - dependencies
+      - ci
