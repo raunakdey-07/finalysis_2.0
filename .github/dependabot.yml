@@ -1,12 +1,16 @@
-# Weekly, grouped, and majors excluded.
+# Weekly, grouped, and majors blocked by default.
 #
-# This repository pins `pnpm` through `packageManager` and installs with
-# `--frozen-lockfile`, so a bump arrives as a lockfile change CI has to accept
-# rather than as a silent upgrade. Dependabot is here to notice a published
-# fix and a stale action, not to propose a redesign of the dependency tree.
+# This repository is in maintenance. The first version of this file let any
+# major through and Dependabot immediately opened a single PR spanning fifteen
+# updates, including redis 4 to 6, eslint 9 to 10, vitest 1 to 5 and
+# @types/node 20 to 26. None of those can be applied together: they are
+# separate migrations, and a preview build of the lot failed to install. A
+# grouped PR is only reviewable when the group is coherent.
 #
-# Majors are ignored deliberately. A Next.js major is a migration, and a
-# stream of them would be noise rather than maintenance.
+# So majors are blocked here, with two deliberate exceptions. A security fix
+# that needs a coordinated bump should reach a human rather than wait, and
+# `pnpm audit` is the other half of that story: it reports advisories in the
+# tree as it is actually installed, which this file cannot.
 version: 2
 
 updates:
@@ -24,30 +28,49 @@ updates:
         applies-to: version-updates
         patterns:
           - '*'
-      # Security fixes are worth a prompt, separate decision.
-      security:
-        applies-to: security-updates
-        patterns:
-          - '*'
     ignore:
-      # Requires a migration, not a merge. Raise these deliberately.
-      - dependency-name: next
-        update-types:
-          - version-update:semver-major
+      # Each of these is a migration rather than a patch, so a major is
+      # declined until someone means to do it.
+      - dependency-name: "@radix-ui/react-dialog"
+        update-types: [version-update:semver-major]
+      - dependency-name: clsx
+        update-types: [version-update:semver-major]
+      - dependency-name: lucide-react
+        update-types: [version-update:semver-major]
       - dependency-name: react
-        update-types:
-          - version-update:semver-major
+        update-types: [version-update:semver-major]
       - dependency-name: react-dom
-        update-types:
-          - version-update:semver-major
+        update-types: [version-update:semver-major]
+      - dependency-name: redis
+        update-types: [version-update:semver-major]
+      - dependency-name: tailwind-merge
+        update-types: [version-update:semver-major]
+      - dependency-name: "@tailwindcss/postcss"
+        update-types: [version-update:semver-major]
+      - dependency-name: "@types/node"
+        update-types: [version-update:semver-major]
+      - dependency-name: "@types/react"
+        update-types: [version-update:semver-major]
+      - dependency-name: "@types/react-dom"
+        update-types: [version-update:semver-major]
+      - dependency-name: eslint
+        update-types: [version-update:semver-major]
+      - dependency-name: tailwindcss
+        update-types: [version-update:semver-major]
       - dependency-name: typescript
-        update-types:
-          - version-update:semver-major
+        update-types: [version-update:semver-major]
+      - dependency-name: vitest
+        update-types: [version-update:semver-major]
       # pnpm is pinned by `packageManager`; a bump has to change that field on
       # purpose, not as a side effect of a dependency PR.
       - dependency-name: pnpm
-        update-types:
-          - version-update:semver-major
+        update-types: [version-update:semver-major]
+
+      # `next` and `eslint-config-next` are deliberately absent from this list,
+      # so a major is allowed for them. They are exact-pinned and have to move
+      # together, and a major for them is how a security fix arrives. This is
+      # how the two critical Next.js advisories (fixed in 16.3.3) were found and
+      # closed: the tree had 16.1.4.
 
   - package-ecosystem: github-actions
     directory: /

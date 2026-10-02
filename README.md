@@ -206,6 +206,28 @@ cached for 30 days, so a provider that changes its markup today keeps serving
 the cached copy for up to a month before anything visibly breaks. The damage
 arrives all at once rather than gradually.
 
+## Deployment
+
+Deployed on Vercel. One setting is not in the repository and has to be right,
+because nothing here can enforce it:
+
+**The Install Command must be pnpm, or unset so Vercel uses the lockfile.**
+
+A Vercel build of this project was observed running `npm install` after
+correctly detecting `pnpm-lock.yaml` and `packageManager: pnpm@10.28.1`. npm
+ignores `pnpm-lock.yaml` entirely: it resolves the caret ranges fresh from the
+registry and writes its own `package-lock.json`, so the tree that deploys is
+not the tree CI proved with `--frozen-lockfile`, and it can change without any
+commit. It was also the direct cause of a failed build, because npm could not
+reconcile a restored build cache against a changed `package.json`.
+
+If a build log says `Running "install" command: npm install`, the deployment is
+not reproducible. Fix it in the Vercel project's Settings, and confirm by
+reading the build log rather than assuming.
+
+The Node runtime is pinned to 22, matching CI, rather than a `>=` range that
+Vercel would silently bump on a future major.
+
 ## Known limitations
 
 - **The screening scores are banded, so they are coarse.** A figure inside a
