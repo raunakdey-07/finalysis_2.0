@@ -1,0 +1,59 @@
+# The build context is sent to the daemon before a single instruction runs, so
+# anything listed here is never uploaded. The rules below are ordered from
+# obviously large to quietly harmful.
+
+# Build output and dependencies: the image builds its own, from the lockfile.
+node_modules
+.next
+out
+build
+dist
+
+# Version control and CI: history is large and the build does not read it.
+.git
+.gitignore
+.github
+
+# Secrets and local configuration. .env.example stays: it holds no values and
+# documents which variables exist, but .env and .env.local must never be copied
+# into an image, where they would be readable by anyone who can pull it.
+.env
+.env.*
+!.env.example
+
+# Local infrastructure work.
+.tools
+deploy
+docs/infra
+
+# Tests and their fixtures. Not needed to build or run the application.
+tests
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+vitest.config.ts
+
+# Docker's own files, so a build never sees or copies the recipe it is in.
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# Editor and OS noise.
+.vscode
+.idea
+*.swp
+.DS_Store
+
+# Documentation and repository metadata.
+README.md
+LICENSE
+*.md
+!app/**/*.md
+
+# Logs and caches.
+*.log
+npm-debug.log*
+pnpm-debug.log*
+coverage
+.cache

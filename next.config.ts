@@ -35,6 +35,10 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // The container image runs this, not `next start` against the whole project.
+  // It emits a self-contained server with only the modules actually imported,
+  // which is what keeps the runtime stage small and free of build tooling.
+  output: "standalone",
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

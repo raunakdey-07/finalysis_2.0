@@ -3,6 +3,8 @@ import { Provenance, StockFundamentals } from '@/types';
 import { describeOutage, logDetail, parseRetryAfter, RateLimited } from '@/lib/errors';
 import { fetchText } from '@/lib/utils/fetch-with-timeout';
 import { isValidFundamentals } from './validate';
+import { increment } from '@/lib/observability/metrics';
+import '@/lib/observability/definitions';
 
 /**
  * Screener.in publishes a small, fixed set of "top ratio" rows per company.
@@ -329,6 +331,10 @@ export function parseFundamentalsHtml(html: string, symbol: string): StockFundam
 export async function fetchFundamentals(symbol: string): Promise<FundamentalsResult> {
   const cacheKey = `fundamentals_v2_${symbol.replace(/\.NS$/i, '').toUpperCase()}`;
   const cached = cache.getEntry<StockFundamentals>(cacheKey);
+  increment('finalysis_cache_events_total', {
+    cache: 'fundamentals',
+    event: cached ? 'hit' : 'miss',
+  });
   if (cached) {
     return {
       fundamentals: cached.data,
@@ -383,6 +389,7 @@ export async function fetchFundamentals(symbol: string): Promise<FundamentalsRes
       throw new Error('Parsed fundamentals failed validation and were discarded');
     }
 
+    increment('finalysis_upstream_requests_total', { provider: 'fundamentals', result: 'success' });
     cache.set(cacheKey, fundamentals, FUNDAMENTALS_TTL_MS);
 
     return {
@@ -392,11 +399,17 @@ export async function fetchFundamentals(symbol: string): Promise<FundamentalsRes
   } catch (err) {
     console.warn(logDetail('fundamentals', err));
     warnings.push(describeOutage('fundamentals', err));
+    increment('finalysis_upstream_requests_total', {
+      provider: 'fundamentals',
+      result: err instanceof Error && err.name === 'RateLimited' ? 'rate_limited' : 'error',
+    });
 
     // Stale-while-error: a previous reading of this company is far better than
     // nothing, provided the caller is told it is stale.
     const stale = cache.getStale<StockFundamentals>(cacheKey);
     if (stale) {
+      increment('finalysis_cache_events_total', { cache: 'fundamentals', event: 'stale_fallback' });
+      increment('finalysis_degraded_responses_total', { reason: 'fundamentals_unavailable' });
       return {
         fundamentals: stale.data,
         provenance: buildProvenance({

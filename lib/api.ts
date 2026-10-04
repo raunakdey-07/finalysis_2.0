@@ -9,6 +9,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getClientId, RATE_LIMITS, rateLimit } from '@/lib/rate-limit';
+import { increment } from '@/lib/observability/metrics';
+import '@/lib/observability/definitions';
 import { COVERED_SYMBOL_COUNT, isKnownSymbol } from '@/lib/symbol-resolver';
 import { parseRequiredNseSymbol } from '@/lib/utils/symbol';
 import type { ApiResponse } from '@/types';
@@ -37,6 +39,8 @@ export function guardRateLimit(request: NextRequest, endpoint: EndpointName): Ne
   const result = rateLimit(`${endpoint}:${clientId}`, RATE_LIMITS[endpoint]);
 
   if (result.success) return null;
+
+  increment('finalysis_rate_limited_total', { endpoint });
 
   return failure(
     429,

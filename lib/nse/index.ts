@@ -3,6 +3,8 @@ import cache from '@/lib/cache';
 import { describeOutage, isWorthRetrying, logDetail } from '@/lib/errors';
 import { getDailyPricesSnapshot, MAX_SNAPSHOT_AGE_MS, StoredQuote } from '@/lib/nse/daily-prices';
 import { fetchYahooQuote } from '@/lib/yahoo';
+import { increment, setGauge } from '@/lib/observability/metrics';
+import '@/lib/observability/definitions';
 
 /**
  * How long a fetched quote is reused.
@@ -51,12 +53,14 @@ function recordFailure(): void {
     circuit.state = 'open';
     circuit.openedAt = Date.now();
   }
+  setGauge('finalysis_circuit_breaker_open', { provider: 'price' }, circuit.state === 'open' ? 1 : 0);
 }
 
 function recordSuccess(): void {
   circuit.failures = 0;
   circuit.openedAt = null;
   circuit.state = 'closed';
+  setGauge('finalysis_circuit_breaker_open', { provider: 'price' }, 0);
 }
 
 async function withRetries<T>(fn: () => Promise<T>): Promise<T> {
@@ -104,6 +108,10 @@ export interface QuoteResult {
 }
 
 function toPrice(quote: StoredQuote, freshness: StockPrice['freshness']): StockPrice {
+  // One counter for the whole reliability story: how the price was obtained.
+  increment('finalysis_price_freshness_total', {
+    kind: freshness.kind === 'daily-close' ? 'daily_close' : freshness.kind,
+  });
   return { ...quote, freshness };
 }
 
@@ -135,6 +143,7 @@ export async function fetchNSEQuote(
   const key = quoteCacheKey(normalized);
 
   const cached = cache.getEntry<StoredQuote>(key);
+  increment('finalysis_cache_events_total', { cache: 'quote', event: cached ? 'hit' : 'miss' });
   if (cached) {
     const ageMs = Date.now() - new Date(cached.timestamp).getTime();
     return {
@@ -157,7 +166,10 @@ export async function fetchNSEQuote(
     }
 
     // Collapse a burst of concurrent misses into a single upstream request.
+    const startedAt = Date.now();
     const quote = await cache.dedupe(key, () => withRetries(() => fetchYahooQuote(normalized)));
+    increment('finalysis_upstream_requests_total', { provider: 'price', result: 'success' });
+    increment('finalysis_upstream_duration_seconds_sum', { provider: 'price' }, Date.now() - startedAt);
     cache.set(key, quote, QUOTE_TTL_MS);
 
     const ageMs = ageOf(quote.quotedAt);
@@ -177,6 +189,10 @@ export async function fetchNSEQuote(
   } catch (error) {
     console.warn(logDetail('price', error));
     liveError = describeOutage('price', error);
+    increment('finalysis_upstream_requests_total', {
+      provider: 'price',
+      result: error instanceof Error && error.name === 'RateLimited' ? 'rate_limited' : 'error',
+    });
   }
 
   if (!allowFallbacks) {
@@ -215,6 +231,10 @@ export async function fetchNSEQuote(
       : undefined;
 
   if (stale && (!snapshotQuote || snapshotAge === null || stale.ageMs < snapshotAge)) {
+    // Served successfully, but from a fallback. A reader sees an old price and
+    // the page says so; this counter is how that is noticed from outside.
+    increment('finalysis_cache_events_total', { cache: 'quote', event: 'stale_fallback' });
+    increment('finalysis_degraded_responses_total', { reason: 'price_fallback' });
     return {
       price: toPrice(stale.data, { kind: 'stale-cache', ageMs: stale.ageMs }),
       provenance: buildProvenance({
@@ -230,6 +250,7 @@ export async function fetchNSEQuote(
 
   if (snapshotQuote) {
     const ageMs = snapshotQuoteAge ?? 0;
+    increment('finalysis_degraded_responses_total', { reason: 'price_fallback' });
     return {
       price: toPrice(snapshotQuote, { kind: 'daily-close', ageMs }),
       provenance: buildProvenance({

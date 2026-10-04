@@ -2,6 +2,8 @@ import cache from '@/lib/cache';
 import { ConfidenceLevel, NewsItem, Provenance } from '@/types';
 import { describeOutage, logDetail } from '@/lib/errors';
 import { fetchText } from '@/lib/utils/fetch-with-timeout';
+import { increment } from '@/lib/observability/metrics';
+import '@/lib/observability/definitions';
 
 /**
  * News retrieval and tone estimation.
@@ -531,12 +533,21 @@ function buildQueries(context: CompanyContext): string[] {
 async function fetchQuery(query: string): Promise<ParsedArticle[]> {
   const url = `${GOOGLE_NEWS_ENDPOINT}?q=${encodeURIComponent(query)}&hl=en-IN&gl=IN&ceid=IN:en`;
 
-  const response = await fetchText(url, { headers: { 'User-Agent': UA } }, REQUEST_TIMEOUT_MS);
-  if (!response.ok) {
-    throw new Error(`Google News returned HTTP ${response.status}`);
-  }
+  try {
+    const response = await fetchText(url, { headers: { 'User-Agent': UA } }, REQUEST_TIMEOUT_MS);
+    if (!response.ok) {
+      throw new Error(`Google News returned HTTP ${response.status}`);
+    }
 
-  return parseRssFeed(response.text);
+    increment('finalysis_upstream_requests_total', { provider: 'news', result: 'success' });
+    return parseRssFeed(response.text);
+  } catch (error) {
+    increment('finalysis_upstream_requests_total', {
+      provider: 'news',
+      result: error instanceof Error && error.name === 'RateLimited' ? 'rate_limited' : 'error',
+    });
+    throw error;
+  }
 }
 
 export interface CompanyNewsResult {
@@ -554,6 +565,10 @@ export async function getNews(context: CompanyContext): Promise<CompanyNewsResul
   const warnings: string[] = [];
 
   const cached = cache.getEntry<CachedNews>(key);
+  increment('finalysis_cache_events_total', {
+    cache: 'news',
+    event: cached ? 'hit' : 'miss',
+  });
   if (cached) {
     const items = cached.data.items;
     const retrieved = items.filter((item) => !item.synthetic);
@@ -627,6 +642,10 @@ export async function getNews(context: CompanyContext): Promise<CompanyNewsResul
   );
 
   const tone = summariseTone(scores, scores.length);
+
+  if (items.length === 0) {
+    increment('finalysis_degraded_responses_total', { reason: 'news_unavailable' });
+  }
 
   return {
     items,

@@ -40,3 +40,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local tooling downloaded for the infrastructure work (kind, kubectl, helm, terraform).
+/.tools/
