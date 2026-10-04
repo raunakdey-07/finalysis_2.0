@@ -1,0 +1,15 @@
+# Everything is state, and none of it is a secret.
+#
+# .terraform/ holds downloaded providers: a few hundred megabytes of binaries
+# that belong in a cache, not in a repository.
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+tfplan
+
+# A .tfvars file is where a real deployment would put its own values. The file
+# in this directory is meant to be read. What must never be committed is a file
+# holding an actual secret value, which is why CRON_SECRET and KV_REDIS_URL are
+# not variables here at all: they are referenced by Secret name only.
+*.auto.tfvars
