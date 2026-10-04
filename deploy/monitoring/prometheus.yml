@@ -1,0 +1,36 @@
+# Prometheus scrape configuration for Finalysis.
+#
+# Validated with `promtool check config`, and the scrape target below is one
+# that has actually been queried and watched change, not a placeholder.
+#
+# Metrics come from /api/telemetry, deliberately not from /api/metrics, which
+# is the company-data API the web page itself calls.
+
+global:
+  # Fifteen seconds is short enough that a deliberate failure test is visible on
+  # the dashboard while it is happening, and long enough that an idle
+  # demonstration cluster is not scraping constantly.
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    environment: local-kind
+
+scrape_configs:
+  # The application itself. In-cluster this resolves through the Service; run
+  # outside the cluster it is the node address of the port-forward.
+  - job_name: finalysis
+    metrics_path: /api/telemetry
+    static_configs:
+      - targets:
+          - finalysis.finalysis.svc.cluster.local:80
+        labels:
+          service: finalysis
+          component: web
+
+  # Prometheus's own metrics, so the dashboard can show whether the monitor
+  # itself is healthy rather than showing an empty graph and calling it "no
+  # traffic".
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - localhost:9090
