@@ -1,0 +1,117 @@
+# Values for the Finalysis chart.
+#
+# Deliberately small. Only things an operator actually has a reason to change at
+# install time are here; anything that exists purely to make the chart look
+# configurable is not.
+
+replicaCount: 2
+
+image:
+  repository: finalysis
+  tag: local
+  # IfNotPresent is correct for a kind cluster where the image was loaded with
+  # `kind load`. A cluster pulling from a registry would want Always.
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+service:
+  type: ClusterIP
+  port: 80
+
+# The two probe endpoints the application exposes. They are separate on purpose
+# and both are configurable, because a slow cluster is exactly when someone
+# reaches for these.
+probes:
+  liveness:
+    path: /api/health
+    initialDelaySeconds: 10
+    periodSeconds: 20
+    timeoutSeconds: 3
+    failureThreshold: 3
+  readiness:
+    path: /api/health/ready
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+  startup:
+    path: /api/health
+    periodSeconds: 5
+    failureThreshold: 12
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    # No CPU limit on purpose: it throttles rather than reschedules, and a brief
+    # slowdown would be punished for the rest of the period.
+    memory: 512Mi
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# Read-only root filesystem means the one writable path Next needs has to be
+# mounted. emptyDir, so nothing outlives the pod.
+nextCache:
+  enabled: true
+  sizeLimit: 128Mi
+
+# Extra environment for the container. Use this for anything that is not a
+# secret. The two known variables are set below from `existingSecret`.
+env:
+  NODE_ENV: production
+  NEXT_TELEMETRY_DISABLED: "1"
+  PORT: "3000"
+  HOSTNAME: "0.0.0.0"
+  NEXT_PUBLIC_SITE_URL: https://finalysis.vercel.app
+
+# The application treats both of these as optional and runs correctly without
+# either, so `create` is false by default and nothing has to be invented to
+# install the chart. Point it at a Secret you created yourself for a real run.
+secrets:
+  create: false
+  # Name of an existing Secret. When set, CRON_SECRET and KV_REDIS_URL are read
+  # from it and both are optional, so a Secret carrying only one of them is fine.
+  existingSecret: ""
+  cronSecretKey: CRON_SECRET
+  redisUrlKey: KV_REDIS_URL
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Ingress is off by default. A local demonstration is reached with
+# `kubectl port-forward`, which needs no ingress controller, no DNS and no
+# public address.
+ingress:
+  enabled: false
+  className: ""
+  host: finalysis.localhost
+  path: /
+  pathType: Prefix
+  annotations: {}
+
+terminationGracePeriodSeconds: 30
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1

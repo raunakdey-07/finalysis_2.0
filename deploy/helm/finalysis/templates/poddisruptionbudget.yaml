@@ -1,0 +1,16 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+# Keeps voluntary disruptions, such as a node drain, from taking the whole site
+# down. With two replicas, minAvailable 1 means one pod always stays.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "finalysis.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "finalysis.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "finalysis.selectorLabels" . | nindent 6 }}
+{{- end }}

@@ -1,0 +1,13 @@
+apiVersion: v2
+name: finalysis
+description: Finalysis, a read-only research view of an NSE company from published figures.
+type: application
+version: 0.1.0
+appVersion: "3.0.0"
+keywords:
+  - finance
+  - research
+  - nextjs
+home: https://github.com/raunakdey-07/finalysis_2.0
+sources:
+  - https://github.com/raunakdey-07/finalysis_2.0
