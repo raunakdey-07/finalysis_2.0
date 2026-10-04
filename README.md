@@ -206,6 +206,24 @@ cached for 30 days, so a provider that changes its markup today keeps serving
 the cached copy for up to a month before anything visibly breaks. The damage
 arrives all at once rather than gradually.
 
+## Local platform
+
+The container, the local Kubernetes cluster, the Prometheus and Grafana setup,
+the Helm chart and the Terraform configuration live in [`deploy/`](deploy/README.md).
+That document also has a "Verified / Not verified" section, which is the part
+worth reading before trusting any of it.
+
+Everything there is local and free: no cloud account, no trial, no paid API and
+no hosted monitoring.
+
+To run the container on its own:
+
+```bash
+deploy/scripts/fetch-tools.sh     # one-off: kind, kubectl, helm, terraform
+deploy/scripts/build.sh
+deploy/scripts/run-local.sh       # http://localhost:3500
+```
+
 ## Deployment
 
 Deployed on Vercel. One setting is not in the repository and has to be right,
