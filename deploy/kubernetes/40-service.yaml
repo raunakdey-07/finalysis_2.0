@@ -1,0 +1,20 @@
+# A ClusterIP service. No LoadBalancer and no NodePort: this exists so that
+# Prometheus can scrape the pods and so port-forwarding has something stable to
+# point at. Exposing it to a load balancer would put the site on the network,
+# which is not what a local demonstration is for.
+apiVersion: v1
+kind: Service
+metadata:
+  name: finalysis
+  namespace: finalysis
+  labels:
+    app.kubernetes.io/name: finalysis
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: finalysis
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP

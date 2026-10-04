@@ -1,0 +1,21 @@
+# Non-secret configuration only.
+#
+# Secrets are not here and must not be added here: a ConfigMap is readable by
+# anyone who can read the namespace, and is committed to git. CRON_SECRET and
+# KV_REDIS_URL come from the mechanism described in 30-secret.example.yaml.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: finalysis-config
+  namespace: finalysis
+  labels:
+    app.kubernetes.io/name: finalysis
+data:
+  NODE_ENV: "production"
+  NEXT_TELEMETRY_DISABLED: "1"
+  # The canonical URL the page uses for metadata, robots.txt and sitemap.xml.
+  # NEXT_PUBLIC_* values are inlined into the client bundle at image build time,
+  # not here, so this one is informational for the running container.
+  NEXT_PUBLIC_SITE_URL: "https://finalysis.vercel.app"
+  PORT: "3000"
+  HOSTNAME: "0.0.0.0"

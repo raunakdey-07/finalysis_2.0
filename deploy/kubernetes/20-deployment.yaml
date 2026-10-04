@@ -1,0 +1,136 @@
+# Finalysis deployment.
+#
+# The probe configuration below is the load-bearing part of this file, and the
+# split between the two probes is deliberate.
+#
+#   startup    gives a cold Node process up to 60s to boot and answer before
+#              liveness is allowed to start counting failures. Without it, a
+#              pod that is merely slow to start gets killed before it ever
+#              ran.
+#   liveness   asks /api/health. That endpoint answers from the process alone
+#              and never touches a provider, so an upstream outage cannot get
+#              an entirely healthy pod killed and restarted.
+#   readiness  asks /api/health/ready. That endpoint also checks nothing
+#              external. Readiness controls whether the pod receives traffic,
+#              so failing it when Yahoo or Screener is down would remove the
+#              only pod that could still serve a cached, clearly-labelled
+#              answer. A degraded upstream is reported in metrics and in the
+#              page's own freshness wording, not by taking the pod out of
+#              rotation.
+#
+# Two replicas, so a rolling update and a node failure both have somewhere to
+# go. The strategy below keeps the old pod serving until the new one is Ready,
+# which is what makes an update invisible rather than a brief outage.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: finalysis
+  namespace: finalysis
+  labels:
+    app.kubernetes.io/name: finalysis
+    app.kubernetes.io/component: web
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: finalysis
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Never drop below the desired count, so capacity does not dip mid-update.
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: finalysis
+        app.kubernetes.io/component: web
+    spec:
+      # Give a terminated container time to finish the request it is serving.
+      # Next's standalone server handles SIGTERM and drains; this is how long
+      # it is allowed to take.
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: finalysis
+          image: finalysis:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: finalysis-config
+          env:
+            # From the Secret. The application treats both as optional: without
+            # a cron secret the scheduled job returns 503 instead of running
+            # open, and without Redis the end-of-day close snapshot is simply
+            # unavailable. Readiness reports which are present and does not
+            # fail on either, because the app already runs correctly without
+            # both and a probe that disagreed would flap on every restart.
+            - name: CRON_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: finalysis-secrets
+                  key: CRON_SECRET
+                  optional: true
+            - name: KV_REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: finalysis-secrets
+                  key: KV_REDIS_URL
+                  optional: true
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/health/ready
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+            successThreshold: 1
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              # No CPU limit on purpose. A cpu limit throttles rather than
+              # reschedules, and a Node process that is briefly slow would be
+              # throttled for the rest of the period instead of being given
+              # the node it was scheduled onto.
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            # Next writes its image cache under .next. The root filesystem is
+            # read-only above, so this is the one writable path the container
+            # gets, and it is emptyDir so nothing outlives the pod.
+            - name: next-cache
+              mountPath: /app/.next/cache
+      volumes:
+        - name: next-cache
+          emptyDir:
+            sizeLimit: 128Mi

@@ -1,0 +1,9 @@
+# Finalysis runs in its own namespace so that "delete everything of ours" is a
+# single command and nothing else on the machine is in the blast radius.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: finalysis
+  labels:
+    app.kubernetes.io/name: finalysis
+    app.kubernetes.io/part-of: finalysis

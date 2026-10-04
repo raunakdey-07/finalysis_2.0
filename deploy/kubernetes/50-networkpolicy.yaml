@@ -1,0 +1,68 @@
+# Default-deny ingress, then allow exactly what the pods need.
+#
+# Both Finalysis pods need to reach three external providers, so egress cannot
+# be fully closed. This policy therefore restricts ingress, where it can be
+# exact, and documents the egress that has to stay open rather than pretending
+# it can be locked down.
+#
+# Ingress: Prometheus scrapes /api/telemetry on 9090 by pod IP. Everything else
+# in the namespace is denied.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: finalysis-default-deny-ingress
+  namespace: finalysis
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: finalysis
+  policyTypes:
+    - Ingress
+  ingress: []
+---
+# Egress, written out explicitly rather than left to "allow all", so the three
+# things this application actually talks to are visible in the repository.
+#
+#   0.0.0.0/0 on 443/80   the three public providers. They cannot be expressed
+#                         as a narrower rule: they are third-party HTTPS
+#                         endpoints with no in-cluster counterpart, and this
+#                         application has no database or internal service to
+#                         reach. DNS is allowed separately below.
+#   kube-system:53        resolving provider hostnames.
+#   monitoring namespace  Prometheus scraping /api/telemetry.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: finalysis-allow-egress
+  namespace: finalysis
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: finalysis
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 9090
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 80
