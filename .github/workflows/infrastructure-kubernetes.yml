@@ -1,0 +1,475 @@
+name: infrastructure-kubernetes
+
+# Manual only, deliberately.
+#
+# This repository is private, and this workflow exists to close one specific
+# gap: kind cannot run on the development machine, because rootless Podman lacks
+# cgroup delegation and podman machine needs QEMU and root. A GitHub-hosted
+# runner is used purely as a disposable CI environment to do that verification.
+#
+# It is NOT the application CI. That is ci.yml, which runs on every push, and it
+# is untouched by this file. Nothing here is scheduled, so a private repository
+# does not burn Actions minutes without someone asking for them.
+on:
+  workflow_dispatch:
+
+# Read-only is enough: the workflow checks out code and talks to a cluster it
+# creates itself. It never needs to write back to the repository, publish a
+# package, or push anything.
+permissions:
+  contents: read
+
+concurrency:
+  group: infra-kubernetes
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: kind verification
+    runs-on: ubuntu-latest
+    # A kind cluster, a 230MB image build and a handful of pods is more than
+    # the default allows on a busy repository.
+    timeout-minutes: 30
+
+    env:
+      CLUSTER_NAME: finalysis
+      NAMESPACE: finalysis
+      IMAGE: finalysis:local
+      # Pinned to the same node image deploy/scripts/cluster-up.sh uses, so the
+      # cluster is the same Kubernetes version every time.
+      KIND_NODE_IMAGE: kindest/node:v1.34.0
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Verify the container runtime
+        run: |
+          set -euo pipefail
+          docker version
+          docker info --format 'runtime={{.ServerVersion}} cgroup={{.CgroupDriver}}'
+
+      # Creates the cluster and puts kubectl on PATH in one step.
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: ${{ env.CLUSTER_NAME }}
+          node_image: ${{ env.KIND_NODE_IMAGE }}
+          # The cluster is deleted at the end of the job either way. It is
+          # ephemeral, so leaving it would cost nothing, but being explicit
+          # keeps the log honest about what happened.
+          cleanup: true
+
+      - name: Report the tool versions actually in use
+        run: |
+          set -euo pipefail
+          kind version
+          kubectl version --client
+          echo "node image: ${KIND_NODE_IMAGE}"
+
+      - name: Build the production image
+        # The Dockerfile installs dependencies with pnpm inside the image, so
+        # nothing has to be set up on the runner beforehand.
+        run: docker build -t "${IMAGE}" -f Dockerfile .
+
+      - name: Load the image into the cluster
+        run: |
+          set -euo pipefail
+          kind load docker-image "${IMAGE}" --name "${CLUSTER_NAME}"
+
+      - name: Apply the existing manifests
+        run: |
+          set -euo pipefail
+          kubectl apply -f deploy/kubernetes/
+
+      - name: Wait for the rollout
+        run: |
+          set -euo pipefail
+          kubectl -n "${NAMESPACE}" rollout status deployment/finalysis --timeout=180s
+
+      # -------------------------------------------------------------------
+      # Cluster state. Printed whether or not the assertions below pass.
+      # -------------------------------------------------------------------
+      - name: Cluster state
+        run: |
+          set -uo pipefail
+          echo "=== nodes ==="
+          kubectl get nodes -o wide
+          echo "=== pods ==="
+          kubectl -n "${NAMESPACE}" get pods -o wide
+          echo "=== deployment ==="
+          kubectl -n "${NAMESPACE}" get deployment -o wide
+          echo "=== service ==="
+          kubectl -n "${NAMESPACE}" get service -o wide
+          echo "=== events ==="
+          kubectl -n "${NAMESPACE}" get events --sort-by=.lastTimestamp | tail -20
+
+      # -------------------------------------------------------------------
+      # Assertions. Each one fails the job with a message that says what was
+      # expected, because a bare non-zero exit tells nobody anything.
+      # -------------------------------------------------------------------
+      - name: Assert the cluster and workload exist
+        run: |
+          set -euo pipefail
+          kubectl get nodes >/dev/null
+          kubectl -n "${NAMESPACE}" get deployment finalysis >/dev/null
+          kubectl -n "${NAMESPACE}" get service finalysis >/dev/null
+          READY=$(kubectl -n "${NAMESPACE}" get deployment finalysis \
+                    -o jsonpath='{.status.readyReplicas}')
+          echo "ready replicas: ${READY}"
+          test "${READY}" -ge 2 || {
+            echo "expected 2 ready replicas, got ${READY}"; exit 1; }
+
+      - name: Assert pods are Ready and probes have passed
+        run: |
+          set -euo pipefail
+          kubectl -n "${NAMESPACE}" wait --for=condition=Ready pod \
+            -l app.kubernetes.io/name=finalysis --timeout=180s
+          kubectl -n "${NAMESPACE}" get pods \
+            -l app.kubernetes.io/name=finalysis \
+            -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.phase}{"\t"}{range .status.conditions[?(@.type=="Ready")]}{.status}{end}{"\n"}{end}'
+
+      - name: Assert probe status from the pod conditions
+        run: |
+          set -euo pipefail
+          # A pod only becomes Ready after the startupProbe has passed and then
+          # the readinessProbe has passed. The kubelet records both as events, so
+          # their presence is the proof that the probes are actually running
+          # rather than merely declared in the manifest.
+          for POD in $(kubectl -n "${NAMESPACE}" get pods \
+                         -l app.kubernetes.io/name=finalysis -o name); do
+            echo "--- ${POD} ---"
+            kubectl -n "${NAMESPACE}" describe "${POD}" \
+              | grep -E "Startup probe|Liveness probe|Readiness probe" \
+              | grep -E "succeeded|failed" | head -5
+          done
+
+      # -------------------------------------------------------------------
+      # Application verification, through the Service.
+      # -------------------------------------------------------------------
+      - name: Start a port-forward to the Service
+        run: |
+          set -euo pipefail
+          kubectl -n "${NAMESPACE}" port-forward svc/finalysis 18080:80 \
+            > /tmp/pf-service.log 2>&1 &
+          echo $! > /tmp/pf-service.pid
+          for i in $(seq 1 30); do
+            curl -fsS -o /dev/null http://127.0.0.1:18080/api/health && break
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:18080/api/health
+
+      - name: Assert liveness, readiness and telemetry through the Service
+        run: |
+          set -euo pipefail
+          echo "liveness : $(curl -fsS http://127.0.0.1:18080/api/health)"
+          echo "readiness: $(curl -fsS http://127.0.0.1:18080/api/health/ready)"
+          echo "--- telemetry ---"
+          curl -fsS http://127.0.0.1:18080/api/telemetry
+
+      - name: Assert a known ticker, an unknown ticker and a news request
+        run: |
+          set -euo pipefail
+          echo "--- known ticker page ---"
+          curl -fsS -o /tmp/rel.html -w "status=%{http_code}\n" \
+            "http://127.0.0.1:18080/?symbol=RELIANCE"
+          grep -q "Business quality" /tmp/rel.html
+
+          echo "--- known ticker quote API ---"
+          curl -fsS "http://127.0.0.1:18080/api/nse/quote?symbol=RELIANCE" | tee /tmp/q.json
+          grep -q '"symbol":"RELIANCE' /tmp/q.json
+
+          echo "--- unknown ticker must be 404, not a wrong company ---"
+          CODE=$(curl -s -o /tmp/unk.json -w '%{http_code}' \
+            "http://127.0.0.1:18080/api/nse/quote?symbol=ZZZZZZ")
+          cat /tmp/unk.json; echo
+          test "${CODE}" = "404" || {
+            echo "expected 404 for an unknown ticker, got ${CODE}"; exit 1; }
+          grep -q UNKNOWN_SYMBOL /tmp/unk.json
+
+          echo "--- news ---"
+          curl -fsS "http://127.0.0.1:18080/api/news?symbol=RELIANCE" \
+            | head -c 200; echo
+
+      # -------------------------------------------------------------------
+      # Pod failure and recovery. This is the test that has never been run.
+      # -------------------------------------------------------------------
+      - name: Pod failure and recovery
+        run: |
+          set -euo pipefail
+          VICTIM=$(kubectl -n "${NAMESPACE}" get pods \
+            -l app.kubernetes.io/name=finalysis \
+            -o jsonpath='{.items[0].metadata.name}')
+          echo "deleting pod ${VICTIM}"
+          BEFORE=$(kubectl -n "${NAMESPACE}" get deployment finalysis \
+            -o jsonpath='{.status.readyReplicas}')
+          echo "ready replicas before: ${BEFORE}"
+
+          kubectl -n "${NAMESPACE}" delete pod "${VICTIM}" --grace-period=0 --force
+
+          kubectl -n "${NAMESPACE}" rollout status deployment/finalysis --timeout=180s
+          AFTER=$(kubectl -n "${NAMESPACE}" get deployment finalysis \
+            -o jsonpath='{.status.readyReplicas}')
+          echo "ready replicas after: ${AFTER}"
+          test "${AFTER}" -ge 2 || {
+            echo "deployment did not recover to 2 ready replicas, got ${AFTER}"; exit 1; }
+
+          NEW=$(kubectl -n "${NAMESPACE}" get pods \
+            -l app.kubernetes.io/name=finalysis -o name | grep -v "${VICTIM}" || true)
+          test -n "${NEW}" || { echo "no replacement pod appeared"; exit 1; }
+          echo "replacement pod(s): ${NEW}"
+
+          # The Service must still be serving after the disruption. This is the
+          # property that matters, not merely that a new pod exists.
+          curl -fsS -o /dev/null -w "service after recovery: %{http_code}\n" \
+            http://127.0.0.1:18080/api/health
+
+      # -------------------------------------------------------------------
+      # Rolling update. Two replicas with maxUnavailable: 0, so the Service
+      # should never lose both. The image is unchanged on purpose: the rollout
+      # is triggered by an annotation on the pod template, so this tests the
+      # strategy rather than the registry.
+      # -------------------------------------------------------------------
+      - name: Rolling update keeps the Service available
+        run: |
+          set -euo pipefail
+          kubectl -n "${NAMESPACE}" patch deployment finalysis --type=merge \
+            -p '{"spec":{"template":{"metadata":{"annotations":{"infra-check/rollout":"'"$(date +%s)"'"}}}}}'
+
+          # Sample readiness while the rollout happens.
+          ( for i in $(seq 1 40); do
+              R=$(kubectl -n "${NAMESPACE}" get deployment finalysis \
+                    -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo 0)
+              echo "${R}"
+              sleep 1
+            done ) > /tmp/ready-samples.txt &
+
+          kubectl -n "${NAMESPACE}" rollout status deployment/finalysis --timeout=180s
+          wait || true
+
+          echo "ready replicas sampled during the rollout:"
+          tr '\n' ' ' < /tmp/ready-samples.txt; echo
+          MIN=$(sort -n /tmp/ready-samples.txt | head -1)
+          echo "lowest observed: ${MIN}"
+          test "${MIN}" -ge 1 || {
+            echo "service lost every ready pod during the rollout (min=${MIN})"; exit 1; }
+
+          curl -fsS -o /dev/null -w "service after rollout: %{http_code}\n" \
+            http://127.0.0.1:18080/api/health
+
+      # -------------------------------------------------------------------
+      # Upstream failure. Deterministic: NetworkPolicy, not a hope that the
+      # internet is down. The existing allow-egress policy is removed for the
+      # duration and replaced with one that permits DNS only, which leaves the
+      # application healthy but unable to reach Yahoo, Screener or Google News.
+      # The original policy is restored afterwards.
+      # -------------------------------------------------------------------
+      - name: Upstream failure, then restore
+        run: |
+          set -euo pipefail
+          POD=$(kubectl -n "${NAMESPACE}" get pods \
+            -l app.kubernetes.io/name=finalysis \
+            -o jsonpath='{.items[0].metadata.name}')
+          echo "targeting a single pod so the circuit breaker is deterministic: ${POD}"
+
+          # Talk to one pod directly. Going through the Service would round-robin
+          # across replicas and the breaker is per process.
+          kubectl -n "${NAMESPACE}" port-forward "pod/${POD}" 18081:3000 \
+            > /tmp/pf-pod.log 2>&1 &
+          echo $! > /tmp/pf-pod.pid
+          for i in $(seq 1 30); do
+            curl -fsS -o /dev/null http://127.0.0.1:18081/api/health && break
+            sleep 1
+          done
+
+          kubectl -n "${NAMESPACE}" delete networkpolicy finalysis-allow-egress --ignore-not-found
+          cat <<'YAML' | kubectl apply -f -
+          apiVersion: networking.k8s.io/v1
+          kind: NetworkPolicy
+          metadata:
+            name: test-deny-upstream
+            namespace: finalysis
+          spec:
+            podSelector:
+              matchLabels:
+                app.kubernetes.io/name: finalysis
+            policyTypes: [Egress]
+            egress:
+              - to:
+                  - namespaceSelector:
+                      matchLabels:
+                        kubernetes.io/metadata.name: kube-system
+                ports:
+                  - { protocol: UDP, port: 53 }
+                  - { protocol: TCP, port: 53 }
+          YAML
+          sleep 5
+
+          echo "=== with every upstream blocked ==="
+          echo "liveness : $(curl -fsS http://127.0.0.1:18081/api/health)"
+          echo "readiness: $(curl -fsS http://127.0.0.1:18081/api/health/ready)"
+
+          echo "--- the app must still serve a page ---"
+          curl -fsS -o /dev/null -w "page status=%{http_code}\n" \
+            "http://127.0.0.1:18081/?symbol=RELIANCE"
+
+          echo "--- drive enough requests at the provider to trip the breaker ---"
+          for S in RELIANCE TCS INFY SBIN HDFCBANK LT; do
+            curl -s -o /dev/null --max-time 30 \
+              "http://127.0.0.1:18081/api/nse/quote?symbol=${S}" || true
+          done
+          sleep 5
+
+          echo "--- no fabricated price ---"
+          curl -s "http://127.0.0.1:18081/api/nse/quote?symbol=RELIANCE" | tee /tmp/degraded.json
+          if grep -q '"data":{' /tmp/degraded.json; then
+            echo "FAIL: a price was served while the provider was unreachable"; exit 1
+          fi
+          echo "OK: data is null, nothing invented"
+
+          echo "--- circuit breaker and telemetry ---"
+          curl -fsS http://127.0.0.1:18081/api/telemetry | tee /tmp/telemetry.txt | grep -E "circuit_breaker_open|upstream_requests_total" || true
+          grep -qE 'finalysis_circuit_breaker_open\{provider="price"\} 1' /tmp/telemetry.txt || {
+            echo "FAIL: the circuit breaker did not open"; exit 1; }
+          echo "OK: circuit breaker is open"
+
+          echo "--- probes must STILL be healthy with the breaker open ---"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18081/api/health)" = "200"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18081/api/health/ready)" = "200"
+          echo "OK: liveness and readiness are not coupled to provider health"
+
+          echo "--- no ticker may appear as a metric label ---"
+          for SYM in RELIANCE TCS INFY SBIN ZZZZZZ; do
+            if grep -qE "\"${SYM}\"|=${SYM}\}" /tmp/telemetry.txt; then
+              echo "FAIL: ${SYM} appears in a metric label"; exit 1
+            fi
+          done
+          echo "OK: no ticker in any label"
+
+          # Put the real policy back.
+          kubectl -n "${NAMESPACE}" delete networkpolicy test-deny-upstream --ignore-not-found
+          kubectl apply -f deploy/kubernetes/50-networkpolicy.yaml
+          echo "restored the real egress policy"
+
+          kill "$(cat /tmp/pf-pod.pid)" 2>/dev/null || true
+
+      # -------------------------------------------------------------------
+      # Prometheus. One short-lived pod with the committed config, to prove
+      # the in-cluster target name actually resolves. Grafana is not booted:
+      # its provisioning was already verified locally and starting it here would
+      # spend most of the job.
+      # -------------------------------------------------------------------
+      - name: Validate the Prometheus configuration
+        run: docker run --rm --entrypoint promtool \
+          -v "${PWD}/deploy/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
+          prom/prometheus:v3.5.0 check config /etc/prometheus/prometheus.yml
+
+      - name: Prometheus scrapes the deployed service
+        run: |
+          set -euo pipefail
+          # The ConfigMap has to exist before the Pod that mounts it. Creating
+          # the Pod first leaves it stuck in ContainerCreating with a
+          # "configmap not found" event, which looks like a slow image pull.
+          kubectl -n "${NAMESPACE}" create configmap prometheus-config \
+            --from-file=prometheus.yml=deploy/monitoring/prometheus.yml \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          kubectl -n "${NAMESPACE}" run prom-check \
+            --image=prom/prometheus:v3.5.0 --restart=Never \
+            --overrides='{"spec":{"containers":[{"name":"prom-check","image":"prom/prometheus:v3.5.0","args":["--config.file=/etc/prometheus/prometheus.yml","--storage.tsdb.path=/prometheus","--storage.tsdb.retention.time=1h"],"volumeMounts":[{"name":"cfg","mountPath":"/etc/prometheus"},{"name":"data","mountPath":"/prometheus"}]}],"volumes":[{"name":"cfg","configMap":{"name":"prometheus-config","items":[{"key":"prometheus.yml","path":"prometheus.yml"}]}},{"name":"data","emptyDir":{}}]}}' \
+            --command -- sleep 900
+          kubectl -n "${NAMESPACE}" wait --for=condition=Ready pod/prom-check --timeout=120s
+          sleep 40
+          echo "=== targets ==="
+          kubectl -n "${NAMESPACE}" exec prom-check -- \
+            wget -qO- 'http://localhost:9090/api/v1/query?query=up%7Bjob%3D%22finalysis%22%7D'
+          echo
+          UP=$(kubectl -n "${NAMESPACE}" exec prom-check -- \
+            wget -qO- 'http://localhost:9090/api/v1/query?query=up%7Bjob%3D%22finalysis%22%7D' \
+            | grep -o '"1"$' | head -1)
+          test "${UP}" = '"1"' || {
+            echo "FAIL: the in-cluster Prometheus target is not up"; exit 1; }
+          echo "OK: Finalysis target is up via the in-cluster service name"
+
+          echo "=== counters move after traffic ==="
+          for S in TCS INFY SBIN; do
+            curl -s -o /dev/null --max-time 40 \
+              "http://127.0.0.1:18080/api/nse/quote?symbol=${S}" || true
+          done
+          sleep 20
+          kubectl -n "${NAMESPACE}" exec prom-check -- \
+            wget -qO- 'http://localhost:9090/api/v1/query?query=sum(finalysis_upstream_requests_total)'
+          echo
+          kubectl -n "${NAMESPACE}" delete pod prom-check --ignore-not-found --wait=false
+
+      # -------------------------------------------------------------------
+      # Terraform against the real context.
+      # -------------------------------------------------------------------
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+
+      - name: Terraform fmt and validate
+        working-directory: deploy/terraform
+        run: |
+          set -euo pipefail
+          terraform fmt -check
+          terraform init -input=false
+          terraform validate
+
+      - name: Terraform plan against the live kind context
+        working-directory: deploy/terraform
+        # Plan only. Apply is not run here: the manifests are already applied by
+        # the steps above, and the Terraform path manages the same namespace and
+        # the same Helm release, so applying both would be two sources of truth
+        # for one workload. Plan proves the configuration resolves against a
+        # real cluster, which is what was previously unverified.
+        run: |
+          set -euo pipefail
+          terraform plan -input=false -lock=false -no-color \
+            -var kube_context="kind-${CLUSTER_NAME}"
+
+      # -------------------------------------------------------------------
+      # Diagnostics. Runs on failure so a red run explains itself.
+      # -------------------------------------------------------------------
+      - name: Diagnostics
+        if: failure()
+        run: |
+          set -uo pipefail
+          echo "############ KIND ############"
+          kind get clusters || true
+          kind export logs /tmp/kind-logs 2>/dev/null || true
+
+          echo "############ ALL NAMESPACES ############"
+          kubectl get pods -A -o wide || true
+          kubectl get deployments -A || true
+          kubectl get services -A || true
+          kubectl get networkpolicies -A || true
+
+          echo "############ EVENTS ############"
+          kubectl get events -A --sort-by=.lastTimestamp | tail -40 || true
+
+          echo "############ DEPLOYMENT ############"
+          kubectl -n "${NAMESPACE}" describe deployment finalysis || true
+
+          echo "############ PODS ############"
+          kubectl -n "${NAMESPACE}" describe pods \
+            -l app.kubernetes.io/name=finalysis || true
+
+          echo "############ LOGS ############"
+          kubectl -n "${NAMESPACE}" logs deployment/finalysis \
+            --all-containers=true --tail=120 || true
+
+          echo "############ PROBE EVENTS ############"
+          kubectl -n "${NAMESPACE}" get pods \
+            -l app.kubernetes.io/name=finalysis \
+            -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{range .status.conditions[*]}  {.type}={.status} {.reason}{"\n"}{end}{end}'
+
+      - name: Tear down the port-forwards
+        if: always()
+        run: |
+          kill "$(cat /tmp/pf-service.pid 2>/dev/null || echo 0)" 2>/dev/null || true
+          kill "$(cat /tmp/pf-pod.pid 2>/dev/null || echo 0)" 2>/dev/null || true
+          kubectl -n "${NAMESPACE}" delete pod prom-check --ignore-not-found --wait=false 2>/dev/null || true
+          echo "port-forwards stopped"
