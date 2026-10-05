@@ -22,9 +22,18 @@ if [ -z "${TARGET}" ]; then
   if [ -n "${KIND_IP}" ]; then
     TARGET="finalysis.${NAMESPACE}.svc.cluster.local:80"
   else
-    # No cluster, so Finalysis is assumed to be running as a container on the
-    # host. Port 3500 is what deploy/scripts/run-local.sh publishes.
-    TARGET="127.0.0.1:3500"
+    # No cluster, so Finalysis is running as a container on the host and
+    # Prometheus needs to be given the HOST's address, not its own.
+    #
+    # This was a real bug and the scrape was silently down because of it: a
+    # container's 127.0.0.1 is its own loopback, so `127.0.0.1:3500` resolves
+    # to Prometheus itself and every scrape fails. `host.containers.internal`
+    # is the host as seen from inside a container on Podman and Docker alike.
+    #
+    # Overridable, because a user may have already published Finalysis
+    # somewhere reachable and this should not be the only way to say so.
+    HOST_PUBLISHED_PORT="${HOST_PUBLISHED_PORT:-3500}"
+    TARGET="${PROMETHEUS_HOST:-host.containers.internal}:${HOST_PUBLISHED_PORT}"
   fi
 fi
 echo "scraping ${TARGET}"
@@ -47,6 +56,29 @@ podman run -d --name prometheus \
 log "Starting Grafana"
 podman rm -f grafana >/dev/null 2>&1 || true
 mkdir -p /tmp/grafana-provisioning/datasources
+
+# Grafana has to reach Prometheus at an address that actually resolves.
+#
+# This was the second real bug the verification pass found, and it is the same
+# mistake as the scrape target: the committed configuration names the in-cluster
+# Service, `http://prometheus:9090`, which resolves under Kubernetes and nowhere
+# else. Run both as plain containers and Grafana failed with
+# `dial tcp: lookup prometheus ... no such host`, and every dashboard panel
+# showed "No data" while Grafana itself reported no error at all.
+#
+# So the URL is chosen the same way the scrape target is: the in-cluster Service
+# when there is a cluster, and the host as seen from inside a container when
+# there is not.
+GRAFANA_PROM_URL="${GRAFANA_PROM_URL:-}"
+if [ -z "${GRAFANA_PROM_URL}" ]; then
+  if [ -n "${KIND_IP}" ]; then
+    GRAFANA_PROM_URL="http://prometheus.${NAMESPACE}.svc.cluster.local:9090"
+  else
+    GRAFANA_PROM_URL="http://host.containers.internal:${PROMETHEUS_PORT}"
+  fi
+fi
+echo "grafana datasource: ${GRAFANA_PROM_URL}"
+
 # Anonymous admin access is the Grafana OSS default and is fine here: the
 # container is published on localhost only and holds no data worth protecting.
 # This is NOT a configuration to copy onto a real deployment.
@@ -56,7 +88,7 @@ datasources:
   - name: Prometheus
     type: prometheus
     access: proxy
-    url: http://prometheus:9090
+    url: ${GRAFANA_PROM_URL}
     isDefault: true
     editable: false
 EOF
