@@ -447,6 +447,7 @@ jobs:
 
           kubectl -n "${NAMESPACE}" run prom-check \
             --image=prom/prometheus:v3.5.0 --restart=Never \
+            --labels=app.kubernetes.io/component=prometheus \
             --overrides='{"spec":{"containers":[{"name":"prom-check","image":"prom/prometheus:v3.5.0","args":["--config.file=/etc/prometheus/prometheus.yml","--storage.tsdb.path=/prometheus","--storage.tsdb.retention.time=1h"],"volumeMounts":[{"name":"cfg","mountPath":"/etc/prometheus"},{"name":"data","mountPath":"/prometheus"}]}],"volumes":[{"name":"cfg","configMap":{"name":"prometheus-config","items":[{"key":"prometheus.yml","path":"prometheus.yml"}]}},{"name":"data","emptyDir":{}}]}}' \
             --command -- sleep 900
           kubectl -n "${NAMESPACE}" wait --for=condition=Ready pod/prom-check --timeout=120s

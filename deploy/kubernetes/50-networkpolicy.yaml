@@ -20,6 +20,41 @@ spec:
     - Ingress
   ingress: []
 ---
+# The default-deny above is real, and it blocked something it should not have.
+#
+# Prometheus scrapes /api/telemetry on port 3000 from inside the cluster. The
+# first version of this file denied every ingress to a Finalysis pod and never
+# re-opened it, so the scrape could never connect: the target resolved by DNS
+# and reported up=0. The application was fine, and `kubectl port-forward` still
+# worked, which is exactly why nothing noticed: a port-forward tunnels through
+# the API server and is not subject to NetworkPolicy at all.
+#
+# So ingress on the metrics path is opened again, narrowly, to pods that are
+# labelled as a scraper or that live in the monitoring namespace. Nothing else
+# is allowed in, and the page itself stays unreachable from another pod.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: finalysis-allow-metrics-scrape
+  namespace: finalysis
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: finalysis
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: prometheus
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 3000
+---
 # Egress, written out explicitly rather than left to "allow all", so the three
 # things this application actually talks to are visible in the repository.
 #
