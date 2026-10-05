@@ -132,17 +132,30 @@ jobs:
       - name: Assert probe status from the pod conditions
         run: |
           set -euo pipefail
-          # A pod only becomes Ready after the startupProbe has passed and then
-          # the readinessProbe has passed. The kubelet records both as events, so
-          # their presence is the proof that the probes are actually running
-          # rather than merely declared in the manifest.
-          for POD in $(kubectl -n "${NAMESPACE}" get pods \
-                         -l app.kubernetes.io/name=finalysis -o name); do
-            echo "--- ${POD} ---"
-            kubectl -n "${NAMESPACE}" describe "${POD}" \
-              | grep -E "Startup probe|Liveness probe|Readiness probe" \
-              | grep -E "succeeded|failed" | head -5
-          done
+          # A pod only reports Ready=True after its startupProbe has passed and
+          # then its readinessProbe has passed; liveness is what keeps it alive.
+          # So containerStatuses.ready plus the Ready condition is the assertion.
+          # The kubelet's own probe events are printed for the log but are NOT
+          # asserted on: they are only emitted while a probe is failing or has
+          # recently changed, so a healthy pod legitimately has none, and grep
+          # finding nothing under `set -o pipefail` failed the first run of this
+          # workflow on healthy pods.
+          kubectl -n "${NAMESPACE}" get pods \
+            -l app.kubernetes.io/name=finalysis \
+            -o jsonpath='{range .items[*]}{.metadata.name}{"\tReady="}{range .status.conditions[?(@.type=="Ready")]}{.status}{end}{"\tcontainerReady="}{range .status.containerStatuses[*]}{.ready}{end}{"\n"}{end}'
+
+          NOTREADY=$(kubectl -n "${NAMESPACE}" get pods \
+            -l app.kubernetes.io/name=finalysis \
+            -o jsonpath='{range .items[*]}{range .status.containerStatuses[*]}{.ready}{end}{end}' \
+            | tr -d 'true' | wc -c)
+          test "${NOTREADY}" -eq 0 || {
+            echo "a container is not ready"; exit 1; }
+          echo "every container reports ready"
+
+          echo "--- kubelet probe events, informational only ---"
+          kubectl -n "${NAMESPACE}" get events \
+            --field-selector involvedObject.kind=Pod \
+            | grep -iE "probe" | tail -10 || echo "(none: probes have not failed)"
 
       # -------------------------------------------------------------------
       # Application verification, through the Service.
@@ -469,7 +482,17 @@ jobs:
       - name: Tear down the port-forwards
         if: always()
         run: |
-          kill "$(cat /tmp/pf-service.pid 2>/dev/null || echo 0)" 2>/dev/null || true
-          kill "$(cat /tmp/pf-pod.pid 2>/dev/null || echo 0)" 2>/dev/null || true
+          set -uo pipefail
+          # Never fall back to PID 0. `kill 0` signals the entire process group,
+          # which on a runner means signalling the job's own shell: the first
+          # run of this workflow exited 143 for exactly that reason.
+          for F in /tmp/pf-service.pid /tmp/pf-pod.pid; do
+            if [ -f "${F}" ]; then
+              PID=$(cat "${F}")
+              if [ -n "${PID}" ] && [ "${PID}" -gt 1 ] 2>/dev/null; then
+                kill "${PID}" 2>/dev/null || true
+              fi
+            fi
+          done
           kubectl -n "${NAMESPACE}" delete pod prom-check --ignore-not-found --wait=false 2>/dev/null || true
           echo "port-forwards stopped"
