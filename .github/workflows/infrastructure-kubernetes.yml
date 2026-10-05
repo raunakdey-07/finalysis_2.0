@@ -495,8 +495,17 @@ jobs:
         # real cluster, which is what was previously unverified.
         run: |
           set -euo pipefail
+          echo "--- contexts kubectl can see ---"
+          kubectl config get-contexts
+          echo "KUBECONFIG=${KUBECONFIG:-<unset>}"
+          # kubeconfig_path is passed explicitly rather than left as the empty
+          # default. The kubernetes provider does not treat an empty string the
+          # same as an unset value: it loads a config that is not the ambient
+          # one, and then reports that the kind context does not exist while
+          # kubectl is talking to the same cluster three steps earlier.
           terraform plan -input=false -lock=false -no-color \
-            -var kube_context="kind-${CLUSTER_NAME}"
+            -var kube_context="kind-${CLUSTER_NAME}" \
+            -var kubeconfig_path="${KUBECONFIG}"
 
       # -------------------------------------------------------------------
       # Diagnostics. Runs on failure so a red run explains itself.
