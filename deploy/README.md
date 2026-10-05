@@ -114,36 +114,72 @@ result you cannot see is not a test.
 
 This matters more than the diagrams, so it is stated plainly.
 
-**Verified by running it on the machine this was written on:**
+### Verified by running it
 
-- The image builds and runs. It contains no package manager, no lockfile, no
-  source and no tests, and runs as uid 1000.
-- The application serves pages, the API, the health endpoints and the telemetry
-  endpoint from that image.
-- The hardened security context works: `--read-only` root filesystem, non-root,
-  all capabilities dropped, `no-new-privileges`. Zero permission errors in the
-  logs.
-- Standalone Next output runs on its own before being put in an image.
-- Prometheus scrapes the application and the counters move when requests are
-  made (`up = 1`, then metric values rising after five requests).
-- Killing the application flips the Prometheus target to `up = 0`.
-- `promtool check config` accepts the scrape configuration.
-- `helm lint` and `helm template` pass, and the values genuinely change the
-  rendered output.
-- `terraform fmt -check` and `terraform validate` pass.
+- **The image** builds and runs. No package manager, lockfile, source or tests
+  inside it, as uid 1000. It was also run with `--read-only`, all capabilities
+  dropped and `no-new-privileges`, matching the Deployment, with no permission
+  errors logged.
+- **The application in that container**: the page renders, both probe endpoints
+  answer 200, `/api/nse/quote`, `/api/metrics` and `/api/news` return real data,
+  and an unknown ticker still returns 404 with `UNKNOWN_SYMBOL` rather than a
+  wrong company or a crash. No secret appeared in the logs.
+- **Probes are not coupled to provider health.** With every upstream made
+  unreachable (below), liveness and readiness both stayed 200, and the circuit
+  breaker reached `open = 1` while both probes stayed 200.
+- **Upstream failure degrades without inventing data.** With no network, the
+  price endpoint returned `data: null` with `PRICE_UNAVAILABLE`, and telemetry
+  recorded `finalysis_upstream_requests_total{result="error"}`.
+- **Prometheus** scrapes the application (`up = 1`), the counters move after
+  traffic, and killing the application flips the target to `up = 0`.
+- **Metric labels** contain no ticker or user input. Checked against TCS, INFY,
+  RELIANCE, SBIN and an unknown symbol; all absent. Only five Finalysis metric
+  families are exported.
+- **The Grafana dashboard** loads, resolves its Prometheus datasource, and its
+  panels carry real data (upstream outcome series, price freshness, circuit
+  breaker reading "Closed", cache hit rate reading a percentage).
+- `promtool check config`, `helm lint`, `helm template`, `terraform fmt -check`
+  and `terraform validate` all pass.
 
-**Not verified, and why:**
+### Not verified
 
-- **The kind cluster was never created.** This environment has no root, and
-  rootless podman needs QEMU, which needs root to install. The manifests,
-  chart and scripts are written to be correct, but no `kubectl get pods` output
-  was produced here, and no in-cluster failure test was run. Run
-  `cluster-up.sh` and `apply.sh` on a machine with Docker or a podman machine to
-  close that gap.
-- **Grafana was not started.** The dashboard JSON parses and the provisioning
-  files are written, but the rendered dashboard has not been viewed.
-- **Terraform `plan` and `apply` were not run.** They need a live cluster. `init`
-  and `validate` do not, and both pass.
+- **No Kubernetes cluster was ever created.** This is the significant gap and it
+  is a capability limit, not a shortcut. Both paths to kind are closed here:
+
+  - `podman machine` needs QEMU, and `qemu-img` and `qemu-system-x86_64` are
+    absent with no way to install them without root (this session runs as
+    uid 1000 and `sudo` requires a password).
+  - kind's native rootless provider needs cgroup delegation on
+    `user-1000.slice`. kind reports this itself:
+    `running kind with rootless provider requires setting systemd property
+    "Delegate=yes"`. `systemctl show -p Delegate user-1000.slice` returns `no`,
+    and writing `/sys/fs/cgroup/user.slice/user-1000.slice/cgroup.subtree_control`
+    fails with `Permission denied`. Only root can change it.
+
+  So there is no `kubectl get pods`, no `kubectl rollout status`, no Service
+  routing through Kubernetes, and no pod-recreation test. The manifests are
+  parsed and reviewed; they have not been applied. Run `cluster-up.sh` and
+  `apply.sh` on a machine with Docker Engine, Podman plus `podman machine`, or
+  root, to close that gap.
+- **Pod failure recovery was not tested.** A container was killed to see whether
+  the runtime restarted it, and podman did not: `--restart=always` left it
+  stopped with `RestartCount=0`. That is a container-runtime behaviour and is
+  not equivalent to Kubernetes recreating a pod, so nothing about pod recovery
+  is demonstrated.
+- **`terraform plan` and `apply`** fail with `cannot load Kubernetes client
+  config / context "kind-finalysis" does not exist`, which is the correct
+  failure for a machine with no cluster. `init`, `fmt` and `validate` pass.
+- **The rendered dashboard was not seen as a picture.** The headless capture
+  returned Grafana's chrome and variables but did not paint the canvas-rendered
+  panels. The panels were confirmed through the DOM instead, which showed their
+  titles, series names and values.
+- **Redis failure** was not tested as a failure, because Redis is not configured
+  in this local setup. "Absent" is therefore the state that was verified:
+  readiness reports `redis: absent` and still answers 200. The
+  snapshot-fallback path needs a Redis with data in it.
+- No multi-node cluster, no rolling update, and no high availability was
+  demonstrated. Two replicas are configured; that is a configuration, not a
+  verified behaviour.
 
 ## Monitoring
 
