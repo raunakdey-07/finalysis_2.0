@@ -40,7 +40,7 @@ function Sources() {
     <ul className="space-y-1.5">
       <li>
         <strong className="font-medium text-stone-900">Prices</strong> are read from Yahoo Finance
-        and carry the exchange timestamp. When a live price is unavailable, Finalysis says so and
+        and carry the exchange timestamp. When a live price is unavailable, Fin-alysis says so and
         shows an older close rather than presenting it as current.
       </li>
       <li>
@@ -50,7 +50,7 @@ function Sources() {
       </li>
       <li>
         <strong className="font-medium text-stone-900">Headlines</strong> come from Google News RSS.
-        They are written by newsrooms, not by Finalysis.
+        They are written by newsrooms, not by Fin-alysis.
       </li>
       <li>
         <strong className="font-medium text-stone-900">The stock list</strong> is a checked-in
@@ -71,7 +71,7 @@ function Method() {
       </p>
       <p className="mt-1.5">
         A figure that was not published contributes nothing and is named as missing. If no figure a
-        score needs was published, Finalysis shows no score at all rather than a neutral one.
+        score needs was published, Fin-alysis shows no score at all rather than a neutral one.
       </p>
     </>
   );
@@ -142,7 +142,7 @@ export function DisclaimerGate() {
 
         <div className="mt-4 space-y-4 text-sm leading-relaxed text-stone-700">
           <DialogDescription>
-            Finalysis is an educational research tool for Indian equities. It exists to make
+            Fin-alysis is an educational research tool for Indian equities. It exists to make
             published company figures easier to read, not to tell you what to buy.
           </DialogDescription>
           <Summary />
@@ -187,7 +187,7 @@ export function MethodologyDialog() {
 
         <div className="mt-4 space-y-5 text-sm leading-relaxed text-stone-700">
           <DialogDescription>
-            Finalysis is an educational research tool. It is not financial advice, not a
+            Fin-alysis is an educational research tool. It is not financial advice, not a
             recommendation to buy or sell, and not a substitute for professional advice.
           </DialogDescription>
 

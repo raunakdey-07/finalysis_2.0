@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 #
-# Production image for Finalysis.
+# Production image for Fin-alysis.
 #
 # Three stages, and the third one contains almost nothing:
 #
@@ -51,7 +51,7 @@ COPY . .
 # is the only moment the site URL can be set. Nothing secret goes here; there is
 # no secret that belongs in a bundle, and anything set here would be readable by
 # anyone who loaded the page.
-ARG NEXT_PUBLIC_SITE_URL=https://finalysis.vercel.app
+ARG NEXT_PUBLIC_SITE_URL=https://fin-alysis.vercel.app
 ENV NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL}
 
 RUN pnpm run build

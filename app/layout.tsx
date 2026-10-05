@@ -44,7 +44,7 @@ const plexExt = localFont({
   ],
 });
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://finalysis.vercel.app";
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://fin-alysis.vercel.app";
 
 const description =
   "Read an NSE company from published numbers: price with its timestamp, valuation and returns against sector bands, and recent headlines. Educational research, not financial advice.";
@@ -54,7 +54,7 @@ const structuredData = {
   "@graph": [
     {
       "@type": "WebSite",
-      name: "Finalysis",
+      name: "Fin-alysis",
       url: siteUrl,
       description,
       inLanguage: "en-IN",
@@ -64,7 +64,7 @@ const structuredData = {
       mainEntity: [
         {
           "@type": "Question",
-          name: "What does Finalysis show for an NSE company?",
+          name: "What does Fin-alysis show for an NSE company?",
           acceptedAnswer: {
             "@type": "Answer",
             text: "A share price with the exchange timestamp it was recorded, published valuation and return figures compared against sector bands, and recent headlines. Every figure states where it came from and when it was true.",
@@ -72,10 +72,10 @@ const structuredData = {
         },
         {
           "@type": "Question",
-          name: "Does Finalysis give financial advice?",
+          name: "Does Fin-alysis give financial advice?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "No. Finalysis is an educational research tool. Its scores are arithmetic on a few published numbers, not recommendations, predictions, or target prices.",
+            text: "No. Fin-alysis is an educational research tool. Its scores are arithmetic on a few published numbers, not recommendations, predictions, or target prices.",
           },
         },
       ],
@@ -85,7 +85,7 @@ const structuredData = {
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
-  title: "Finalysis: NSE company figures, with sources and timestamps",
+  title: "Fin-alysis: NSE Research Tool",
   description,
   icons: {
     icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
@@ -93,7 +93,7 @@ export const metadata: Metadata = {
   },
   alternates: { canonical: "/" },
   openGraph: {
-    title: "Finalysis: NSE company figures, with sources and timestamps",
+    title: "Fin-alysis: NSE Research Tool",
     description,
     url: "/",
     type: "website",
@@ -101,7 +101,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary",
-    title: "Finalysis: NSE company figures, with sources and timestamps",
+    title: "Fin-alysis: NSE Research Tool",
     description,
   },
   robots: { index: true, follow: true },

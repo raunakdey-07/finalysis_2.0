@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Run Finalysis as a plain container, with no cluster.
+# Run Fin-alysis as a plain container, with no cluster.
 #
 # This is the smallest thing that proves the image works, and it is what to use
 # when the point is the application rather than the orchestration.

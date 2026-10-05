@@ -77,7 +77,7 @@ export function guardSymbol(
       symbol: null,
       error: failure(
         404,
-        `${parsed.symbol} is not one of the ${COVERED_SYMBOL_COUNT} NSE tickers Finalysis covers.`,
+        `${parsed.symbol} is not one of the ${COVERED_SYMBOL_COUNT} NSE tickers Fin-alysis covers.`,
         'UNKNOWN_SYMBOL'
       ),
     };

@@ -6,7 +6,7 @@ import type { MetadataRoute } from 'next';
  * therefore point search engines at duplicates, so the sitemap is the
  * canonical page only.
  */
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://finalysis.vercel.app';
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://fin-alysis.vercel.app';
 
 export default function sitemap(): MetadataRoute.Sitemap {
   return [

@@ -661,7 +661,7 @@ export function describeVerdict(metrics: StockMetrics): ScreeningVerdict {
       label: 'insufficient-data',
       headline: 'Not enough data to screen',
       summary:
-        'The provider did not publish the metrics this screen needs, so Finalysis has nothing to compare against sector bands. It is not a judgement about the company.',
+        'The provider did not publish the metrics this screen needs, so Fin-alysis has nothing to compare against sector bands. It is not a judgement about the company.',
       coverage: 0,
       basis: 'No screening inputs were available.',
     };

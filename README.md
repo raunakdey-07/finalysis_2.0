@@ -1,8 +1,8 @@
-# Finalysis
+# Fin-alysis
 
 Read an NSE company from published numbers.
 
-Finalysis pulls a share price with the timestamp the exchange recorded it, the
+Fin-alysis pulls a share price with the timestamp the exchange recorded it, the
 valuation and return figures a public company page actually publishes, and
 recent headlines. It compares those figures against sector bands and says what
 it found. It is an educational research tool, not financial advice, and it does
@@ -38,13 +38,13 @@ not recommend buying or selling anything.
 - It does not estimate intrinsic value or a fair price.
 - It does not measure management quality, competitive advantage, or accounting
   quality.
-- It does not measure growth. The company pages Finalysis reads publish one
+- It does not measure growth. The company pages Fin-alysis reads publish one
   figure at a time, and none of them is a growth series.
 - It does not give a recommendation, a target, or a probability of anything.
 
 ## Coverage
 
-Finalysis covers a fixed dataset of NSE tickers held in `data/stocks.json`
+Fin-alysis covers a fixed dataset of NSE tickers held in `data/stocks.json`
 (2,364 at the time of writing), not every listed company. Within that set,
 figures are available only for companies the source pages cover, so some
 symbols will return a price but no company figures. The page says which
@@ -83,7 +83,7 @@ Copy `.env.example` and set the values you need. Only the first is required.
 | --- | --- | --- |
 | `CRON_SECRET` | For the snapshot job | Bearer token the job requires. If it is unset the job returns 503 rather than running open. |
 | `KV_REDIS_URL` | For the snapshot job | Redis used to store the end-of-day close snapshot. Without it, prices fall back to a cache-only policy. `REDIS_URL` is accepted as an alias. |
-| `NEXT_PUBLIC_SITE_URL` | Optional | Canonical URL used for metadata, robots and sitemap. Defaults to `https://finalysis.vercel.app`. |
+| `NEXT_PUBLIC_SITE_URL` | Optional | Canonical URL used for metadata, robots and sitemap. Defaults to `https://fin-alysis.vercel.app`. |
 
 Vercel cron requests automatically send `CRON_SECRET` as an
 `Authorization: Bearer` header when that variable is set, so the scheduled job
@@ -270,7 +270,7 @@ Vercel would silently bump on a future major.
   the reader pressing anything.
 - Company figures are the latest completed financial year. They are not a
   trailing twelve-month view and are not adjusted for later restatements.
-- Screener.in does not publish a debt-to-equity figure on the pages Finalysis
+- Screener.in does not publish a debt-to-equity figure on the pages Fin-alysis
   reads, so leverage is not shown and is not scored.
 - The cache is per instance, so upstream request volume scales with traffic.
 - The site is light-only. A dark palette was previously declared while every

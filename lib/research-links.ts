@@ -1,7 +1,7 @@
 /**
  * Primary sources for a company.
  *
- * Finalysis summarises a handful of published figures and nothing else. These
+ * Fin-alysis summarises a handful of published figures and nothing else. These
  * are where the reader goes for the filings, notes and disclosures the screen
  * does not read.
  *

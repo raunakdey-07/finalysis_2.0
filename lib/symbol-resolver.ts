@@ -568,7 +568,7 @@ export function resolveSymbol(query: string, options: ResolveSymbolOptions = {})
 }
 
 /**
- * True when the ticker is one Finalysis actually claims to cover.
+ * True when the ticker is one Fin-alysis actually claims to cover.
  *
  * Routes use this before any upstream request so that an unknown ticker costs
  * a map lookup rather than a scrape of a third-party site.

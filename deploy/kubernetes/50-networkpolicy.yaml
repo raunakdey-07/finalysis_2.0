@@ -1,6 +1,6 @@
 # Default-deny ingress, then allow exactly what the pods need.
 #
-# Both Finalysis pods need to reach three external providers, so egress cannot
+# Both Fin-alysis pods need to reach three external providers, so egress cannot
 # be fully closed. This policy therefore restricts ingress, where it can be
 # exact, and documents the egress that has to stay open rather than pretending
 # it can be locked down.
@@ -23,7 +23,7 @@ spec:
 # The default-deny above is real, and it blocked something it should not have.
 #
 # Prometheus scrapes /api/telemetry on port 3000 from inside the cluster. The
-# first version of this file denied every ingress to a Finalysis pod and never
+# first version of this file denied every ingress to a Fin-alysis pod and never
 # re-opened it, so the scrape could never connect: the target resolved by DNS
 # and reported up=0. The application was fine, and `kubectl port-forward` still
 # worked, which is exactly why nothing noticed: a port-forward tunnels through

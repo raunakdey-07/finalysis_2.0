@@ -1,6 +1,6 @@
 apiVersion: v2
 name: finalysis
-description: Finalysis, a read-only research view of an NSE company from published figures.
+description: Fin-alysis, a read-only research view of an NSE company from published figures.
 type: application
 version: 0.1.0
 appVersion: "3.0.0"

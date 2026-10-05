@@ -42,5 +42,5 @@ jobs:
 
       - name: Build
         env:
-          NEXT_PUBLIC_SITE_URL: https://finalysis.vercel.app
+          NEXT_PUBLIC_SITE_URL: https://fin-alysis.vercel.app
         run: pnpm run build

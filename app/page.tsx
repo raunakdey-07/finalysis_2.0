@@ -582,7 +582,7 @@ export default function Page() {
         <div className="mx-auto w-full max-w-4xl px-4 py-8 sm:px-6 sm:py-12">
           <header className="mb-8 border-b border-stone-200 pb-6">
             <p className="text-xs font-semibold uppercase tracking-widest text-stone-500">
-              Finalysis
+              Fin-alysis
             </p>
             {/*
               A tagline, not the page's subject. The company below is the subject,
@@ -798,7 +798,7 @@ export default function Page() {
               ) : (
                 <p className="mt-2 text-sm text-stone-600">
                   {unknownSymbol
-                    ? `${toApiSymbol(symbol)} is not one of the ${COVERED_SYMBOL_COUNT} tickers Finalysis covers.`
+                    ? `${toApiSymbol(symbol)} is not one of the ${COVERED_SYMBOL_COUNT} tickers Fin-alysis covers.`
                     : `No price could be retrieved for ${toApiSymbol(symbol)}.`}
                 </p>
               )}
@@ -840,12 +840,12 @@ export default function Page() {
                 <div className="mt-4 rounded-xl border-l-4 border-l-caution bg-white p-6 shadow-sm">
                   <p className="text-lg font-semibold text-caution-ink">
                     {unknownSymbol
-                      ? `${toApiSymbol(symbol)} is not a company Finalysis covers`
+                      ? `${toApiSymbol(symbol)} is not a company Fin-alysis covers`
                       : `Nothing could be loaded for ${toApiSymbol(symbol)}`}
                   </p>
                   <p className="mt-2 text-sm leading-relaxed text-stone-700">
                     {unknownSymbol
-                      ? "Finalysis only covers the NSE tickers in its own list. Check the spelling, or try the ticker without a suffix."
+                      ? "Fin-alysis only covers the NSE tickers in its own list. Check the spelling, or try the ticker without a suffix."
                       : "The price source and the company-figures source did not answer. That is a data problem, not a view about the company. The status above names the source that failed."}
                   </p>
                 </div>
@@ -973,7 +973,7 @@ export default function Page() {
               list of NSE tickers and to what each provider publishes.
             </p>
             <p className="mt-2 text-xs leading-relaxed text-stone-600">
-              Finalysis does not give financial advice and does not recommend buying or selling
+              Fin-alysis does not give financial advice and does not recommend buying or selling
               anything.
             </p>
             <div className="mt-3">

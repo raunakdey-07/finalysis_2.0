@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Create the local kind cluster and load Finalysis into it.
+# Create the local kind cluster and load Fin-alysis into it.
 #
 # One cluster, one node. A single node is enough to demonstrate probes, rolling
 # updates, resource limits and self-healing, and it keeps a 16 GB laptop from

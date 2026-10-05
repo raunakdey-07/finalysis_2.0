@@ -74,7 +74,7 @@ export function NewsSection({
               {provenance?.lastUpdated
                 ? `, refreshed ${formatExchangeDateTime(provenance.lastUpdated)}`
                 : ""}
-              . Headlines are written by newsrooms, not by Finalysis.
+              . Headlines are written by newsrooms, not by Fin-alysis.
             </p>
           </>
         ) : null}
@@ -90,7 +90,7 @@ export function NewsSection({
             </p>
             {links.length > 0 && !unknownSymbol ? (
               <p className="mt-2 text-xs leading-relaxed text-stone-600">
-                These are links to primary sources, not news. Finalysis has not read them. The
+                These are links to primary sources, not news. Fin-alysis has not read them. The
                 sources are listed below.
               </p>
             ) : null}

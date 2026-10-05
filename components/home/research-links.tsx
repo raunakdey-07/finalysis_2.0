@@ -42,7 +42,7 @@ export function ResearchLinks({
           ))}
         </LinkList>
         <p className="mt-4 border-t border-stone-100 pt-3 text-xs text-stone-500">
-          Finalysis reads a few published figures and nothing else. Filings, notes and disclosures
+          Fin-alysis reads a few published figures and nothing else. Filings, notes and disclosures
           live at these links.
         </p>
       </Panel>

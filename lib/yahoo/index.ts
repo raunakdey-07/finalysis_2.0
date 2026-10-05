@@ -26,7 +26,7 @@ const YAHOO_HEADERS = {
 };
 
 /**
- * A quote as the provider reports it, before Finalysis decides how fresh it is.
+ * A quote as the provider reports it, before Fin-alysis decides how fresh it is.
  * The freshness label is added one layer up, where the retrieval path is known.
  */
 export type YahooQuote = Omit<StockPrice, 'freshness'>;

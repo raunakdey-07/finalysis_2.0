@@ -70,7 +70,7 @@ export function DataStatus({
 
   const detailLines = [
     unknownSymbol
-      ? "No lookup was made. Finalysis only covers the NSE tickers in its own list."
+      ? "No lookup was made. Fin-alysis only covers the NSE tickers in its own list."
       : [
           freshness ? `Price: ${strip(freshness.detail)}` : "Price: not retrieved",
           figuresDate

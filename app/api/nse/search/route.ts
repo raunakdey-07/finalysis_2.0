@@ -133,7 +133,7 @@ export async function GET(request: NextRequest) {
     data: [],
     error:
       resolution.message ??
-      `No covered NSE ticker matches "${query}". Finalysis only lists the companies in its own dataset.`,
+      `No covered NSE ticker matches "${query}". Fin-alysis only lists the companies in its own dataset.`,
     errorCode: 'NOT_IN_DATASET',
     timestamp: new Date().toISOString(),
     provenance: provenanceFor('Local ticker dataset (no match)', 'high'),

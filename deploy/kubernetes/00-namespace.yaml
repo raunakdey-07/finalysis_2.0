@@ -1,4 +1,4 @@
-# Finalysis runs in its own namespace so that "delete everything of ours" is a
+# Fin-alysis runs in its own namespace so that "delete everything of ours" is a
 # single command and nothing else on the machine is in the blast radius.
 apiVersion: v1
 kind: Namespace

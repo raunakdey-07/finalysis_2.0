@@ -16,6 +16,6 @@ data:
   # The canonical URL the page uses for metadata, robots.txt and sitemap.xml.
   # NEXT_PUBLIC_* values are inlined into the client bundle at image build time,
   # not here, so this one is informational for the running container.
-  NEXT_PUBLIC_SITE_URL: "https://finalysis.vercel.app"
+  NEXT_PUBLIC_SITE_URL: "https://fin-alysis.vercel.app"
   PORT: "3000"
   HOSTNAME: "0.0.0.0"

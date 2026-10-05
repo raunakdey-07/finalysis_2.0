@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Install or upgrade Finalysis from the local Helm chart.
+# Install or upgrade Fin-alysis from the local Helm chart.
 #
 #   deploy/scripts/helm.sh                 # install with defaults
 #   deploy/scripts/helm.sh --set replicaCount=3

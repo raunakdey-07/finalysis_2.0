@@ -1,4 +1,4 @@
-# Prometheus scrape configuration for Finalysis.
+# Prometheus scrape configuration for Fin-alysis.
 #
 # Validated with `promtool check config`, and the scrape target below is one
 # that has actually been queried and watched change, not a placeholder.

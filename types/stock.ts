@@ -1,5 +1,5 @@
 /**
- * Core data shapes for Finalysis.
+ * Core data shapes for Fin-alysis.
  *
  * Freshness fields are mandatory, not optional. Every value that reaches a user
  * must be able to say when it was true and where it came from.

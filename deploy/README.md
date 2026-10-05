@@ -6,7 +6,7 @@ a container runtime, a kind cluster and roughly 6 GB of memory.
 
 ## What this is for
 
-Finalysis reads from three third-party providers that all fail sometimes. The
+Fin-alysis reads from three third-party providers that all fail sometimes. The
 application already handles that — a cache, a circuit breaker, bounded retries,
 stale-while-error fallbacks, and a page that says how old a number is. This
 directory is the part that makes that visible and testable: a container, probes,
@@ -15,8 +15,8 @@ a cluster that restarts things, and metrics that show the fallbacks firing.
 ```mermaid
 flowchart TD
   Reader -->|browser| Svc["Service (ClusterIP)"]
-  Svc --> Pod1["Pod: Finalysis"]
-  Svc --> Pod2["Pod: Finalysis"]
+  Svc --> Pod1["Pod: Fin-alysis"]
+  Svc --> Pod2["Pod: Fin-alysis"]
   Pod1 --> Cache[(in-process cache)]
   Pod2 --> Cache
   Pod1 --> Yahoo["Yahoo Finance"]
@@ -133,7 +133,7 @@ This matters more than the diagrams, so it is stated plainly.
 - **Prometheus** scrapes the application (`up = 1`), the counters move after
   traffic, and killing the application flips the target to `up = 0`.
 - **Metric labels** contain no ticker or user input. Checked against TCS, INFY,
-  RELIANCE, SBIN and an unknown symbol; all absent. Only five Finalysis metric
+  RELIANCE, SBIN and an unknown symbol; all absent. Only five Fin-alysis metric
   families are exported.
 - **The Grafana dashboard** loads, resolves its Prometheus datasource, and its
   panels carry real data (upstream outcome series, price freshness, circuit
@@ -163,7 +163,7 @@ deployed to any cloud, and this is not production Kubernetes operation.
 The most recent run passed every step: kind v0.31.0, node image
 `kindest/node:v1.34.0`, kubectl v1.35.0, in 4m41s.
 
-- Cluster created, control plane ready, two Finalysis replicas Ready.
+- Cluster created, control plane ready, two Fin-alysis replicas Ready.
 - Service served a real company page, a quote, a news request, both health
   endpoints and telemetry. An unknown ticker returned 404 with
   `UNKNOWN_SYMBOL`.
@@ -188,7 +188,7 @@ could scrape them. See the next section.
 
 ## The NetworkPolicy that quietly broke metrics
 
-`finalysis-default-deny-ingress` denies every ingress to a Finalysis pod, which
+`finalysis-default-deny-ingress` denies every ingress to a Fin-alysis pod, which
 is the right default: nothing in the cluster should be able to reach the page.
 
 It was also wrong as written, because Prometheus scrapes `/api/telemetry` on

@@ -1,4 +1,4 @@
-# Values for the Finalysis chart.
+# Values for the Fin-alysis chart.
 #
 # Deliberately small. Only things an operator actually has a reason to change at
 # install time are here; anything that exists purely to make the chart look
@@ -82,7 +82,7 @@ env:
   NEXT_TELEMETRY_DISABLED: "1"
   PORT: "3000"
   HOSTNAME: "0.0.0.0"
-  NEXT_PUBLIC_SITE_URL: https://finalysis.vercel.app
+  NEXT_PUBLIC_SITE_URL: https://fin-alysis.vercel.app
 
 # The application treats both of these as optional and runs correctly without
 # either, so `create` is false by default and nothing has to be invented to

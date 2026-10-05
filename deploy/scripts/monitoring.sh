@@ -4,8 +4,8 @@
 # Both are the upstream open-source images, not a hosted service. Nothing here
 # needs an account, a trial or an API key.
 #
-# Prometheus scrapes Finalysis through the same kind Service the dashboard uses,
-# so this works whether Finalysis is in the cluster or running as a container on
+# Prometheus scrapes Fin-alysis through the same kind Service the dashboard uses,
+# so this works whether Fin-alysis is in the cluster or running as a container on
 # the host. The only difference is the target in the config.
 set -eu
 
@@ -22,7 +22,7 @@ if [ -z "${TARGET}" ]; then
   if [ -n "${KIND_IP}" ]; then
     TARGET="finalysis.${NAMESPACE}.svc.cluster.local:80"
   else
-    # No cluster, so Finalysis is running as a container on the host and
+    # No cluster, so Fin-alysis is running as a container on the host and
     # Prometheus needs to be given the HOST's address, not its own.
     #
     # This was a real bug and the scrape was silently down because of it: a
@@ -30,7 +30,7 @@ if [ -z "${TARGET}" ]; then
     # to Prometheus itself and every scrape fails. `host.containers.internal`
     # is the host as seen from inside a container on Podman and Docker alike.
     #
-    # Overridable, because a user may have already published Finalysis
+    # Overridable, because a user may have already published Fin-alysis
     # somewhere reachable and this should not be the only way to say so.
     HOST_PUBLISHED_PORT="${HOST_PUBLISHED_PORT:-3500}"
     TARGET="${PROMETHEUS_HOST:-host.containers.internal}:${HOST_PUBLISHED_PORT}"
@@ -97,7 +97,7 @@ cat > /tmp/grafana-provisioning/dashboards/dashboards.yaml <<EOF
 apiVersion: 1
 providers:
   - name: finalysis
-    folder: Finalysis
+    folder: Fin-alysis
     type: file
     options:
       path: /var/lib/grafana/dashboards
@@ -118,6 +118,6 @@ podman run -d --name grafana \
 echo
 echo "Prometheus   http://localhost:${PROMETHEUS_PORT}"
 echo "Grafana      http://localhost:${GRAFANA_PORT}   (anonymous admin)"
-echo "Dashboard    provisioned automatically under the Finalysis folder"
+echo "Dashboard    provisioned automatically under the Fin-alysis folder"
 echo
 echo "Stop with:   podman rm -f prometheus grafana"

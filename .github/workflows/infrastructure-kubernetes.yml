@@ -458,7 +458,7 @@ jobs:
           UP=$(kubectl -n "${NAMESPACE}" exec prom-check -- wget -qO- 'http://localhost:9090/api/v1/query?query=up%7Bjob%3D%22finalysis%22%7D' | grep -oE '"[01]"' | tail -1 | tr -d '"')
           test "${UP}" = "1" || {
             echo "FAIL: the in-cluster Prometheus target is not up"; exit 1; }
-          echo "OK: Finalysis target is up via the in-cluster service name"
+          echo "OK: Fin-alysis target is up via the in-cluster service name"
 
           echo "=== counters move after traffic ==="
           for S in TCS INFY SBIN; do

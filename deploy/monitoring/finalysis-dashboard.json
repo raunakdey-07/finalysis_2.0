@@ -1,8 +1,8 @@
 {
-  "uid": "finalysis-reliability",
-  "title": "Finalysis reliability",
+  "uid": "fin-alysis-reliability",
+  "title": "Fin-alysis reliability",
   "description": "What the resilience layer is actually doing: which upstreams are answering, how often a reader was served a cached or stale value, and whether the circuit breaker is open.",
-  "tags": ["finalysis", "reliability"],
+  "tags": ["fin-alysis", "reliability"],
   "timezone": "browser",
   "schemaVersion": 39,
   "version": 1,
