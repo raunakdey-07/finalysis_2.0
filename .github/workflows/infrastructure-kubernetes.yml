@@ -172,6 +172,34 @@ jobs:
           done
           curl -fsS http://127.0.0.1:18080/api/health
 
+      # `kubectl port-forward svc/...` resolves to ONE pod and stays bound to
+      # it. Delete that pod, or roll it, and the forward dies with it: the
+      # second run of this workflow failed with `curl: (52) Empty reply from
+      # server` immediately after a successful recovery, because the harness had
+      # asked a dead tunnel whether the Service was working.
+      #
+      # So after any disruption the tunnel is rebuilt before the Service is
+      # asked again. Rebuilding it is not the same as starting the Service.
+      - name: Re-point the Service port-forward
+        run: |
+          set -uo pipefail
+          if [ -f /tmp/pf-service.pid ]; then
+            PID=$(cat /tmp/pf-service.pid)
+            if [ -n "${PID}" ] && [ "${PID}" -gt 1 ] 2>/dev/null; then
+              kill "${PID}" 2>/dev/null || true
+            fi
+          fi
+          sleep 2
+          kubectl -n "${NAMESPACE}" port-forward svc/finalysis 18080:80 \
+            > /tmp/pf-service.log 2>&1 &
+          echo $! > /tmp/pf-service.pid
+          for i in $(seq 1 30); do
+            curl -fsS -o /dev/null http://127.0.0.1:18080/api/health 2>/dev/null && break
+            sleep 1
+          done
+          curl -fsS -o /dev/null -w "service port-forward rebuilt: %{http_code}\n" \
+            http://127.0.0.1:18080/api/health
+
       - name: Assert liveness, readiness and telemetry through the Service
         run: |
           set -euo pipefail
@@ -233,7 +261,18 @@ jobs:
           echo "replacement pod(s): ${NEW}"
 
           # The Service must still be serving after the disruption. This is the
-          # property that matters, not merely that a new pod exists.
+          # property that matters, not merely that a new pod exists. The tunnel
+          # is rebuilt first because the old one was pinned to the pod that was
+          # just deleted.
+          kill "$(cat /tmp/pf-service.pid)" 2>/dev/null || true
+          sleep 2
+          kubectl -n "${NAMESPACE}" port-forward svc/finalysis 18080:80 \
+            > /tmp/pf-service.log 2>&1 &
+          echo $! > /tmp/pf-service.pid
+          for i in $(seq 1 30); do
+            curl -fsS -o /dev/null http://127.0.0.1:18080/api/health 2>/dev/null && break
+            sleep 1
+          done
           curl -fsS -o /dev/null -w "service after recovery: %{http_code}\n" \
             http://127.0.0.1:18080/api/health
 
@@ -259,6 +298,17 @@ jobs:
 
           kubectl -n "${NAMESPACE}" rollout status deployment/finalysis --timeout=180s
           wait || true
+
+          # The tunnel was pinned to a pod that has just been replaced.
+          kill "$(cat /tmp/pf-service.pid)" 2>/dev/null || true
+          sleep 2
+          kubectl -n "${NAMESPACE}" port-forward svc/finalysis 18080:80 \
+            > /tmp/pf-service.log 2>&1 &
+          echo $! > /tmp/pf-service.pid
+          for i in $(seq 1 30); do
+            curl -fsS -o /dev/null http://127.0.0.1:18080/api/health 2>/dev/null && break
+            sleep 1
+          done
 
           echo "ready replicas sampled during the rollout:"
           tr '\n' ' ' < /tmp/ready-samples.txt; echo
