@@ -497,15 +497,20 @@ jobs:
           set -euo pipefail
           echo "--- contexts kubectl can see ---"
           kubectl config get-contexts
-          echo "KUBECONFIG=${KUBECONFIG:-<unset>}"
-          # kubeconfig_path is passed explicitly rather than left as the empty
-          # default. The kubernetes provider does not treat an empty string the
-          # same as an unset value: it loads a config that is not the ambient
-          # one, and then reports that the kind context does not exist while
+          # $HOME/.kube/config is kubectl's own default, used only when
+          # KUBECONFIG is unset, which it is on a GitHub runner. Expanding it
+          # bare under `set -u` failed the step on that alone.
+          KCFG="${KUBECONFIG:-$HOME/.kube/config}"
+          echo "kubeconfig: ${KCFG}"
+          test -f "${KCFG}" || { echo "no kubeconfig at ${KCFG}"; exit 1; }
+          # Passed explicitly rather than left as the empty default. The
+          # kubernetes provider does not treat an empty string the same as an
+          # unset value: it loads something that is not the ambient kubeconfig
+          # and then reports that the kind context does not exist, while
           # kubectl is talking to the same cluster three steps earlier.
           terraform plan -input=false -lock=false -no-color \
             -var kube_context="kind-${CLUSTER_NAME}" \
-            -var kubeconfig_path="${KUBECONFIG}"
+            -var kubeconfig_path="${KCFG}"
 
       # -------------------------------------------------------------------
       # Diagnostics. Runs on failure so a red run explains itself.
