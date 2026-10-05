@@ -143,43 +143,74 @@ This matters more than the diagrams, so it is stated plainly.
 
 ### Not verified
 
-- **No Kubernetes cluster was ever created.** This is the significant gap and it
-  is a capability limit, not a shortcut. Both paths to kind are closed here:
+- **Redis failure** was not tested, because Redis is not part of this local
+  deployment and adding it solely for a test would be inventing infrastructure.
+  What was verified is its *absent* state, which is how this setup is
+  configured: readiness reports `redis: absent` and still answers 200. The
+  snapshot-fallback path needs a Redis holding data.
+- **No multi-node cluster, no HA.** Two replicas with `maxUnavailable: 0` are
+  configured, and the rolling-update test observed ready replicas never falling
+  below two. That is one observation on one cluster at one moment, not a claim
+  of high availability.
 
-  - `podman machine` needs QEMU, and `qemu-img` and `qemu-system-x86_64` are
-    absent with no way to install them without root (this session runs as
-    uid 1000 and `sudo` requires a password).
-  - kind's native rootless provider needs cgroup delegation on
-    `user-1000.slice`. kind reports this itself:
-    `running kind with rootless provider requires setting systemd property
-    "Delegate=yes"`. `systemctl show -p Delegate user-1000.slice` returns `no`,
-    and writing `/sys/fs/cgroup/user.slice/user-1000.slice/cgroup.subtree_control`
-    fails with `Permission denied`. Only root can change it.
+### Verified in GitHub Actions
 
-  So there is no `kubectl get pods`, no `kubectl rollout status`, no Service
-  routing through Kubernetes, and no pod-recreation test. The manifests are
-  parsed and reviewed; they have not been applied. Run `cluster-up.sh` and
-  `apply.sh` on a machine with Docker Engine, Podman plus `podman machine`, or
-  root, to close that gap.
-- **Pod failure recovery was not tested.** A container was killed to see whether
-  the runtime restarted it, and podman did not: `--restart=always` left it
-  stopped with `RestartCount=0`. That is a container-runtime behaviour and is
-  not equivalent to Kubernetes recreating a pod, so nothing about pod recovery
-  is demonstrated.
-- **`terraform plan` and `apply`** fail with `cannot load Kubernetes client
-  config / context "kind-finalysis" does not exist`, which is the correct
-  failure for a machine with no cluster. `init`, `fmt` and `validate` pass.
-- **The rendered dashboard was not seen as a picture.** The headless capture
-  returned Grafana's chrome and variables but did not paint the canvas-rendered
-  panels. The panels were confirmed through the DOM instead, which showed their
-  titles, series names and values.
-- **Redis failure** was not tested as a failure, because Redis is not configured
-  in this local setup. "Absent" is therefore the state that was verified:
-  readiness reports `redis: absent` and still answers 200. The
-  snapshot-fallback path needs a Redis with data in it.
-- No multi-node cluster, no rolling update, and no high availability was
-  demonstrated. Two replicas are configured; that is a configuration, not a
-  verified behaviour.
+`.github/workflows/infrastructure-kubernetes.yml`, manual dispatch only, on a
+GitHub-hosted `ubuntu-latest` runner. The runner is used purely as a disposable
+CI environment, because kind cannot run on the workstation above. Nothing is
+deployed to any cloud, and this is not production Kubernetes operation.
+
+The most recent run passed every step: kind v0.31.0, node image
+`kindest/node:v1.34.0`, kubectl v1.35.0, in 4m41s.
+
+- Cluster created, control plane ready, two Finalysis replicas Ready.
+- Service served a real company page, a quote, a news request, both health
+  endpoints and telemetry. An unknown ticker returned 404 with
+  `UNKNOWN_SYMBOL`.
+- **Pod recovery**: `finalysis-6c5c7ffcd8-49ph7` force-deleted, deployment
+  rolled out, `ready replicas after: 2`, replacement `...-45tzv`, Service
+  answering 200.
+- **Rolling update**: ready replicas sampled throughout never dropped below 2;
+  Service answered 200 afterwards.
+- **Upstream failure**, forced with a DNS-only NetworkPolicy rather than by
+  hoping the internet was down: liveness and readiness stayed 200, the page
+  still served, the price came back `null` rather than invented, the circuit
+  breaker reached `open = 1` after 7 recorded upstream errors, and both probes
+  were still healthy with the breaker open. No ticker appeared in any label.
+- **Prometheus**: config validated with promtool, and an in-cluster Prometheus
+  scraped `finalysis.finalysis.svc.cluster.local:80` with the target up.
+- **Terraform**: `fmt -check`, `validate` and `plan` against the live context,
+  with `Plan: 3 to add`.
+
+That run also found and fixed a real defect in this directory's own manifests:
+the default-deny ingress policy had sealed the pods so completely that nothing
+could scrape them. See the next section.
+
+## The NetworkPolicy that quietly broke metrics
+
+`finalysis-default-deny-ingress` denies every ingress to a Finalysis pod, which
+is the right default: nothing in the cluster should be able to reach the page.
+
+It was also wrong as written, because Prometheus scrapes `/api/telemetry` on
+port 3000 from inside the cluster. The first in-cluster run resolved the target
+by DNS and got `up = 0`, forever, and nothing complained:
+
+- the application was genuinely fine, so every functional assertion passed;
+- `kubectl port-forward` still worked, because a port-forward tunnels through
+  the API server and is **not** subject to NetworkPolicy at all.
+
+So the failure was invisible to every local test and to every check that
+touched the application. Only an in-cluster scrape reaches the real network
+path.
+
+Ingress on port 3000 is now opened again, narrowly, to pods labelled
+`app.kubernetes.io/component: prometheus` or living in the `monitoring`
+namespace. The page itself stays unreachable from another pod, which is what
+the default-deny was for.
+
+The general lesson is worth more than the fix: a default-deny is only correct
+once something has been given permission, and the thing that needs permission
+is usually the thing nobody notices is missing.
 
 ## Monitoring
 
