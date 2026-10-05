@@ -423,9 +423,17 @@ jobs:
       # spend most of the job.
       # -------------------------------------------------------------------
       - name: Validate the Prometheus configuration
-        run: docker run --rm --entrypoint promtool \
-          -v "${PWD}/deploy/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
-          prom/prometheus:v3.5.0 check config /etc/prometheus/prometheus.yml
+        # Fetched rather than run from a container: one download, no volume
+        # mount, and no shell quoting to get wrong. The earlier version was a
+        # multi-line `docker run` with backslash continuations, which was parsed
+        # as `docker run --rm --entrypoint promtool` with no image at all and
+        # rejected with "invalid reference format" and a confusing exit 125.
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/promtool \
+            https://github.com/prometheus/prometheus/releases/download/v3.5.0/prometheus-3.5.0.linux-amd64.tar.gz
+          tar -xzf /tmp/promtool -C /tmp prometheus-3.5.0.linux-amd64/promtool
+          /tmp/prometheus-3.5.0.linux-amd64/promtool check config deploy/monitoring/prometheus.yml
 
       - name: Prometheus scrapes the deployed service
         run: |
@@ -444,13 +452,10 @@ jobs:
           kubectl -n "${NAMESPACE}" wait --for=condition=Ready pod/prom-check --timeout=120s
           sleep 40
           echo "=== targets ==="
-          kubectl -n "${NAMESPACE}" exec prom-check -- \
-            wget -qO- 'http://localhost:9090/api/v1/query?query=up%7Bjob%3D%22finalysis%22%7D'
+          kubectl -n "${NAMESPACE}" exec prom-check -- wget -qO- 'http://localhost:9090/api/v1/query?query=up%7Bjob%3D%22finalysis%22%7D'
           echo
-          UP=$(kubectl -n "${NAMESPACE}" exec prom-check -- \
-            wget -qO- 'http://localhost:9090/api/v1/query?query=up%7Bjob%3D%22finalysis%22%7D' \
-            | grep -o '"1"$' | head -1)
-          test "${UP}" = '"1"' || {
+          UP=$(kubectl -n "${NAMESPACE}" exec prom-check -- wget -qO- 'http://localhost:9090/api/v1/query?query=up%7Bjob%3D%22finalysis%22%7D' | grep -oE '"[01]"' | tail -1 | tr -d '"')
+          test "${UP}" = "1" || {
             echo "FAIL: the in-cluster Prometheus target is not up"; exit 1; }
           echo "OK: Finalysis target is up via the in-cluster service name"
 
@@ -460,8 +465,7 @@ jobs:
               "http://127.0.0.1:18080/api/nse/quote?symbol=${S}" || true
           done
           sleep 20
-          kubectl -n "${NAMESPACE}" exec prom-check -- \
-            wget -qO- 'http://localhost:9090/api/v1/query?query=sum(finalysis_upstream_requests_total)'
+          kubectl -n "${NAMESPACE}" exec prom-check -- wget -qO- 'http://localhost:9090/api/v1/query?query=sum(finalysis_upstream_requests_total)'
           echo
           kubectl -n "${NAMESPACE}" delete pod prom-check --ignore-not-found --wait=false
 
